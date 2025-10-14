@@ -9,15 +9,29 @@
 // @match        https://plugins.jetbrains.com/*
 // @match        https://openrouter.ai/*
 // @grant        none
-// @run-at       document-idle
+// @run-at       document-start
 // @license      Apache-2.0
 // ==/UserScript==
+// noinspection JSNonASCIINames
 
 (function () {
     'use strict';
 
+    // 添加CSS隐藏页面内容防止闪烁
+    const style = document.createElement('style');
+    style.textContent = `
+        html.translating {
+            visibility: hidden !important;
+        }
+    `;
+    document.documentElement.appendChild(style);
+
+    // 立即添加class隐藏页面
+    document.documentElement.classList.add('translating');
+
     // 翻译映射表(英文->中文)
     const translations = {
+        "Ask followup…": "进行后续询问...",
         "Account": "账户",
         "Activity": "活动",
         "Add stop sequence": "添加停止序列",
@@ -36,16 +50,18 @@
         "Clear chat": "清空聊天",
         "Close run settings panel": "关闭运行设置面板",
         "Code execution": "代码执行",
+        "Copy code": "复制代码",
+        "Copilot": "副驾驶",
         "Collapse to hide model thoughts": "折叠以隐藏模型想法",
         "Compare": "比较",
         "Compare mode": "比较模式",
         "Compatibility Range": "兼容范围",
+        "Compatibility:": "兼容性:",
         "Credits": "额度",
         "Creativity allowed in the responses": "响应中允许的创造性",
         "Dark": "深色",
         "Dashboard": "信息中心",
         "Default": "默认",
-        "Direct Chat": "直接聊天",
         "Disclaimer": "免责声明",
         "Docs": "文档",
         "Documentation": "文档",
@@ -71,15 +87,19 @@
         "Higher resolutions may provide better understanding but use more tokens.": "更高的分辨率可以提供更好的理解，但会消耗更多令牌。",
         "History": "历史记录",
         "Interface For LLMs": "大语言模型接口",
+        "Image Edit": "图片编辑",
+        "Image-to-Video": "图生视频",
         "Insert assets such as images, videos, files, or audio": "插入图片、视频、文件或音频等资源",
         "Insert assets such as images, videos, folders, files, or audio": "插入图片、视频、文件夹、文件或音频等资源",
         "Interleaved text-and-image generation with the new Gemini 2.0 Flash": "使用新的 Gemini Flash 进行文图交错生成",
         "Keys": "密钥",
         "Leaderboard": "排行榜",
+        "Leaderboard Overview": "排行榜概览",
         "Learn more": "了解详情",
         "Let the model decide how many thinking tokens to use or choose your own value": "让模型决定使用多少思考令牌，或选择您自己的值",
         "Lets Gemini use code to solve complex tasks": "让 Gemini 使用代码解决复杂任务",
         "Lets you define functions that Gemini can call": "让您可以定义 Gemini 能够调用的函数",
+        "Log out": "退出登录",
         "Light": "浅色",
         "Live audio-to-audio dialog": "实时音频对话",
         "Maximum number of tokens in response": "响应中的最大令牌数",
@@ -95,7 +115,8 @@
         "Open navigation menu": "打开导航菜单",
         "Open settings menu": "打开设置菜单",
         "Output length": "输出长度",
-        "Overview": "概述",
+        "Overview": "概览",
+        "Older": "更早",
         "Plugin Ideas": "插件创意",
         "Plugin Versions": "插件版本",
         "Probability threshold for top-p sampling": "Top-P 采样的概率阈值",
@@ -103,6 +124,7 @@
         "Prompt gallery": "提示库",
         "Providers": "提供商",
         "Rankings": "排名",
+        "Rank (UB)": "排名（UB）",
         "Ratings & Reviews": "评分与评论",
         "Reasoning": "推理",
         "Reply": "回复",
@@ -115,6 +137,7 @@
         "Run settings": "运行设置",
         "Safety settings": "安全设置",
         "Save prompt": "保存提示",
+        "Score": "分数",
         "Search": "搜索",
         "Select a model": "选择一个模型",
         "Select or upload a file on Google Drive to include in your prompt": "在 Google Drive 上选择或上传文件以包含在您的提示中",
@@ -132,6 +155,7 @@
         "Sort": "排序",
         "Skip to main content": "跳转到主要内容",
         "Start a message...": "开始一条消息...",
+        "Start Voting": "开始投票",
         "Start typing a prompt": "开始输入提示词",
         "Stream": "实时对话",
         "Structured output": "结构化输出",
@@ -139,6 +163,9 @@
         "System": "系统",
         "System instructions": "系统指令",
         "Temperature": "温度",
+        "Text": "文本",
+        "Text-to-Image": "文生图",
+        "Text-to-Video": "文生视频",
         "Theme": "主题",
         "Themes": "主题",
         "The Unified": "统一",
@@ -149,6 +176,7 @@
         "Toggle thinking mode": "切换思考模式",
         "Token count": "令牌计数",
         "Tools": "工具",
+        "Today": "今天",
         "Top K": "Top-K",
         "Top P": "Top-P",
         "Truncate response including and after string": "在包含指定字符串后截断响应",
@@ -158,6 +186,7 @@
         "Update Date": "更新日期",
         "Upload a file to Google Drive to include in your prompt": "上传文件到 Google Drive 以包含在您的提示中",
         "Upload File": "上传文件",
+        "Upload Image": "上传图片",
         "URL context": "网址上下文",
         "URL context tool": "网址上下文工具",
         "Usage & Billing": "用量和结算",
@@ -165,10 +194,15 @@
         "User": "用户",
         "Version": "版本",
         "Versions": "版本",
+        "View": "查看",
+        "Votes": "投票数",
+        "Vision": "视觉",
         "View all": "查看全部",
         "View Trending": "查看趋势",
         "View more actions": "查看更多操作",
+        "View status": "查看状态",
         "Welcome to AI Studio": "欢迎使用 AI Studio",
+        "WebDev": "网页开发",
         "What's new": "新增功能",
         "World's smartest AIs,": "世界最聪明的人工智能,",
         "Write Review": "写评论",
@@ -218,20 +252,60 @@
     }
 
     // 使用MutationObserver来处理动态加载的内容
-    const observer = new MutationObserver(async (mutations) => {
+    const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
             for (const node of mutation.addedNodes) {
-                // 当新节点被添加到DOM时对其进行翻译
-                walkAndTranslate(node);
+                // 只翻译新添加的节点(不递归遍历)
+                if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) {
+                    translateNode(node);
+                    // 如果是元素节点(遍历其子节点)
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        walkAndTranslate(node);
+                    }
+                }
             }
         }
     });
 
-    // 首次加载时完整翻译一次body
-    walkAndTranslate(document.body);
+    /**
+     * 初始化翻译功能
+     */
+    function initTranslation() {
+        // 使用requestIdleCallback在浏览器空闲时翻译(不阻塞渲染)
+        const doTranslate = () => {
+            walkAndTranslate(document.body);
+            // 翻译完成后显示页面
+            document.documentElement.classList.remove('translating');
+        };
 
-    // 开始监听body内的DOM变化
-    observer.observe(document.body, {
-        childList: true, subtree: true, characterData: true
-    });
+        // 优先使用requestIdleCallback(降低对页面性能的影响)
+        if (typeof requestIdleCallback !== 'undefined') {
+            requestIdleCallback(doTranslate, { timeout: 100 });
+        } else {
+            // 降级方案: 使用setTimeout
+            setTimeout(doTranslate, 0);
+        }
+
+        // 立即开始监听DOM变化(不等翻译完成)
+        observer.observe(document.body, {
+            childList: true,
+            subtree: true,
+            characterData: true
+        });
+    }
+
+    // 尽早执行翻译(不等待DOMContentLoaded)
+    if (document.body) {
+        // body已存在(立即执行)
+        initTranslation();
+    } else {
+        // body还未创建(等待其创建)
+        const bodyObserver = new MutationObserver(() => {
+            if (document.body) {
+                bodyObserver.disconnect();
+                initTranslation();
+            }
+        });
+        bodyObserver.observe(document.documentElement, { childList: true });
+    }
 })();

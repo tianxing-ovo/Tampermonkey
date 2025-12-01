@@ -40,6 +40,7 @@
         "Add stop...": "添加停止序列...",
         "Advanced settings": "高级设置",
         "All actions": "所有操作",
+        "Announcements": "公告",
         "Answering": "回答",
         "Answers": "回答",
         "API Keys": "API 密钥",
@@ -55,11 +56,13 @@
         "Based on your viewing history and watched tags.": "基于您的浏览历史和关注的标签",
         "Badges": "徽章",
         "Bounties": "悬赏",
+        "Broadcast": "广播",
         "Build": "构建",
         "Build Plugins": "构建插件",
         "Business": "商业",
         "BUSINESS": "商业",
         "Cash Out": "提现",
+        "Careers": "招聘",
         "Categories": "分类",
         "Challenges": "挑战",
         "Changelog": "更新日志",
@@ -131,6 +134,7 @@
         "Input Modalities": "输入模态",
         "Insert assets such as images, videos, files, or audio": "插入图片、视频、文件或音频等资源",
         "Insert assets such as images, videos, folders, files, or audio": "插入图片、视频、文件夹、文件或音频等资源",
+        "Integrations (BYOK)": "集成 (BYOK)",
         "Interesting posts for you": "为你推荐的有趣帖子",
         "Interface For LLMs": "大语言模型接口",
         "Interleaved text-and-image generation with the new Gemini 2.0 Flash": "使用新的 Gemini Flash 进行文图交错生成",
@@ -164,11 +168,17 @@
         "Open settings menu": "打开设置菜单",
         "Output length": "输出长度",
         "Output Modalities": "输出模态",
+        "Organization Members": "组织成员",
         "Overview": "概览",
+        "Partners": "合作伙伴",
         "Plugin Ideas": "插件创意",
         "Plugin Versions": "插件版本",
+        "Presets": "预设",
         "Press": "新闻",
+        "Pricing": "定价",
+        "Privacy": "隐私",
         "Privacy Policy": "隐私政策",
+        "Provisioning Keys": "配置密钥",
         "Probability threshold for top-p sampling": "Top-P 采样的概率阈值",
         "Products": "产品",
         "Professional": "专业",
@@ -223,14 +233,17 @@
         "Series": "系列",
         "Stream": "实时对话",
         "Structured output": "结构化输出",
+        "Status": "状态",
         "Studio": "工作室",
         "Summary": "概要",
+        "Support": "支持",
         "Supported Parameters": "支持的参数",
         "System": "系统",
         "System instructions": "系统指令",
         "Tags": "标签",
         "Technology": "技术",
         "Temperature": "温度",
+        "Terms": "条款",
         "Terms of Service": "服务条款",
         "Text": "文本",
         "Text-to-Image": "文生图",
@@ -242,6 +255,7 @@
         "Thinking mode": "思考模式",
         "Thoughts": "思考",
         "Today": "今天",
+        "Training, Logging, & Privacy": "训练、日志与隐私",
         "Toggle thinking budget between auto and manual": "在自动和手动之间切换思考预算",
         "Toggle thinking mode": "切换思考模式",
         "Token count": "令牌计数",
@@ -280,9 +294,16 @@
         "What's new": "新增功能",
         "World's smartest AIs,": "世界最聪明的人工智能,",
         "Write Review": "写评论",
+        "Your": "你的",
         "You need to create and run a prompt in order to share it": "您需要创建并运行一个提示才能分享它",
         "(experimental)": "(实验的)"
     };
+
+    // 小写翻译映射表(英文->中文)
+    const lowerCaseTranslations = {};
+    for (const key in translations) {
+        lowerCaseTranslations[key.toLowerCase()] = translations[key];
+    }
 
     /**
      * 翻译单个节点的文本或属性
@@ -294,17 +315,16 @@
             const attributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
-                if (value && translations[value]) {
-                    node.setAttribute(attr, translations[value]);
+                if (value && lowerCaseTranslations[value.toLowerCase()]) {
+                    node.setAttribute(attr, lowerCaseTranslations[value.toLowerCase()]);
                 }
             }
         }
         // 翻译文本节点
         if (node.nodeType === Node.TEXT_NODE) {
             const text = node.nodeValue.trim();
-            if (text && translations[text]) {
-                // 使用replace保留原始文本周围的空白字符
-                node.nodeValue = node.nodeValue.replace(text, translations[text]);
+            if (text && lowerCaseTranslations[text.toLowerCase()]) {
+                node.nodeValue = lowerCaseTranslations[text.toLowerCase()];
             }
         }
     }
@@ -354,7 +374,7 @@
 
         // 优先使用requestIdleCallback(降低对页面性能的影响)
         if (typeof requestIdleCallback !== 'undefined') {
-            requestIdleCallback(doTranslate, { timeout: 100 });
+            requestIdleCallback(doTranslate, {timeout: 100});
         } else {
             // 降级方案: 使用setTimeout
             setTimeout(doTranslate, 0);
@@ -378,6 +398,6 @@
                 initTranslation();
             }
         });
-        bodyObserver.observe(document.documentElement, { childList: true });
+        bodyObserver.observe(document.documentElement, {childList: true});
     }
 })();

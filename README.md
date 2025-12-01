@@ -9,6 +9,7 @@
 - **LM Arena** - `https://lmarena.ai/*`
 - **JetBrains Plugins** - `https://plugins.jetbrains.com/*`
 - **OpenRouter AI** - `https://openrouter.ai/*`
+- **Stack Overflow** - `https://stackoverflow.com/*`
 
 ## 🚀 安装方法
 
@@ -67,7 +68,7 @@ observer.observe(document.body, {...});
 ```
 
 ## 📝 翻译词条
-脚本内置了 200+ 常用界面术语的翻译，包括：
+脚本内置了 250+ 常用界面术语的翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
 - 操作按钮：Run（运行）、Save（保存）、Share（分享）

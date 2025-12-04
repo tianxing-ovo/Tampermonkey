@@ -10,6 +10,7 @@
 - **JetBrains Plugins** - `https://plugins.jetbrains.com/*`
 - **OpenRouter AI** - `https://openrouter.ai/*`
 - **Stack Overflow** - `https://stackoverflow.com/*`
+- **Hugging Face** - `https://huggingface.co/*`
 
 ## 🚀 安装方法
 
@@ -65,10 +66,14 @@ requestIdleCallback(() => {
 
 // 4. 立即监听 DOM 变化（不等翻译完成）
 observer.observe(document.body, {...});
+
+// 5. 延迟翻译（处理 SPA 框架动态渲染的内容）
+setTimeout(() => walkAndTranslate(document.body), 300);
+setTimeout(() => walkAndTranslate(document.body), 1000);
 ```
 
 ## 📝 翻译词条
-脚本内置了 250+ 常用界面术语的翻译，包括：
+脚本内置了 300+ 常用界面术语的翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
 - 操作按钮：Run（运行）、Save（保存）、Share（分享）
@@ -117,6 +122,7 @@ A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
 3. **增量翻译**：MutationObserver 只处理新增节点，避免重复遍历
 4. **高效遍历**：使用 TreeWalker API 而非递归，性能更优
 5. **并行监听**：翻译和 DOM 监听同时进行，不漏掉动态内容
+6. **SPA 支持**：延迟翻译机制确保 React/Vue 等框架动态渲染的内容也能被翻译
 
 ## 🤝 贡献指南
 欢迎提交 Issue 和 Pull Request！

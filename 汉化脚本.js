@@ -9,6 +9,7 @@
 // @match        https://plugins.jetbrains.com/*
 // @match        https://openrouter.ai/*
 // @match        https://stackoverflow.com/*
+// @match        https://huggingface.co/*
 // @grant        none
 // @run-at       document-start
 // @license      Apache-2.0
@@ -72,6 +73,7 @@
         "Clear chat": "清空聊天",
         "Close run settings panel": "关闭运行设置面板",
         "Code execution": "代码执行",
+        "Community": "社区",
         "Companies": "公司",
         "Company": "公司",
         "Compare": "比较",
@@ -94,7 +96,9 @@
         "Dark": "深色",
         "Dashboard": "信息中心",
         "Data": "数据",
+        "Datasets": "数据集",
         "Default": "默认",
+        "Deploy": "部署",
         "Disclaimer": "免责声明",
         "Distillable": "可蒸馏",
         "Docs": "文档",
@@ -102,6 +106,7 @@
         "Earn reputation by": "通过以下方式获得声望：",
         "Edit": "编辑",
         "Editing": "编辑",
+        "Edit model card": "编辑模型卡片",
         "Edu Courses": "教育课程",
         "Embeddings": "嵌入",
         "Enterprise": "企业",
@@ -111,7 +116,9 @@
         "Featured Models": "精选模型",
         "Fetch information from web links": "从网页链接中获取信息",
         "File": "文件",
+        "Files and versions": "文件和版本",
         "Filter models": "过滤模型",
+        "Filter by name": "按名称筛选",
         "Find answers to your technical questions and help others answer theirs.": "查找您的技术问题答案并帮助其他用户回答他们的问题",
         "Following": "关注",
         "Function calling": "函数调用",
@@ -140,6 +147,7 @@
         "Interleaved text-and-image generation with the new Gemini 2.0 Flash": "使用新的 Gemini Flash 进行文图交错生成",
         "Keys": "密钥",
         "Labs": "实验室",
+        "Languages": "语言",
         "Leaderboard": "排行榜",
         "Leaderboard Overview": "排行榜概览",
         "Learn more": "了解详情",
@@ -147,15 +155,19 @@
         "Lets Gemini use code to solve complex tasks": "让 Gemini 使用代码解决复杂任务",
         "Lets you define functions that Gemini can call": "让您可以定义 Gemini 能够调用的函数",
         "Legal": "法律",
+        "Libraries": "库",
+        "Licenses": "许可证",
         "Life & arts": "生活与艺术",
         "Light": "浅色",
         "Live audio-to-audio dialog": "实时音频对话",
         "Log out": "退出登录",
+        "Main": "主页",
         "Maximum number of tokens in response": "响应中的最大令牌数",
         "Media Resolution": "媒体分辨率",
         "Media resolution": "媒体分辨率",
         "Model": "模型",
         "Model Authors": "模型作者",
+        "Model card": "模型卡片",
         "Models": "模型",
         "Native image generation": "原生图片生成",
         "Native speech generation": "原生语音生成",
@@ -169,7 +181,9 @@
         "Output length": "输出长度",
         "Output Modalities": "输出模态",
         "Organization Members": "组织成员",
+        "Organizations": "组织",
         "Overview": "概览",
+        "Other": "其他",
         "Partners": "合作伙伴",
         "Plugin Ideas": "插件创意",
         "Plugin Versions": "插件版本",
@@ -208,6 +222,7 @@
         "Score": "分数",
         "Search": "搜索",
         "Search…": "搜索",
+        "Search models, datasets, users...": "搜索模型、数据集、用户...",
         "Select a model": "选择一个模型",
         "Select or upload a file on Google Drive to include in your prompt": "在 Google Drive 上选择或上传文件以包含在您的提示中",
         "Send message": "发送消息",
@@ -223,6 +238,7 @@
         "Sign out": "退出登录",
         "Skip to main content": "跳转到主要内容",
         "Sort": "排序",
+        "Spaces": "空间",
         "Start a message...": "开始一条消息...",
         "Start typing a prompt": "开始输入提示词",
         "Start Voting": "开始投票",
@@ -241,6 +257,7 @@
         "System": "系统",
         "System instructions": "系统指令",
         "Tags": "标签",
+        "Tasks": "任务",
         "Technology": "技术",
         "Temperature": "温度",
         "Terms": "条款",
@@ -275,6 +292,7 @@
         "URL context tool": "网址上下文工具",
         "Usage & Billing": "用量和结算",
         "Use Google Search": "使用 Google 搜索",
+        "Use this model": "使用此模型",
         "User": "用户",
         "Users": "用户",
         "Version": "版本",
@@ -365,25 +383,23 @@
      * 初始化翻译功能
      */
     function initTranslation() {
-        // 使用requestIdleCallback在浏览器空闲时翻译(不阻塞渲染)
-        const doTranslate = () => {
-            walkAndTranslate(document.body);
-            // 翻译完成后显示页面
-            document.documentElement.classList.remove('translating');
-        };
-
-        // 优先使用requestIdleCallback(降低对页面性能的影响)
-        if (typeof requestIdleCallback !== 'undefined') {
-            requestIdleCallback(doTranslate, {timeout: 100});
-        } else {
-            // 降级方案: 使用setTimeout
-            setTimeout(doTranslate, 0);
-        }
-
-        // 立即开始监听DOM变化(不等翻译完成)
+        // 立即开始监听DOM变化
         observer.observe(document.body, {
             childList: true, subtree: true, characterData: true
         });
+
+        // 第一次翻译
+        walkAndTranslate(document.body);
+
+        // 延迟翻译(处理SPA框架动态渲染的内容)
+        setTimeout(() => {
+            walkAndTranslate(document.body);
+            // 翻译完成后显示页面
+            document.documentElement.classList.remove('translating');
+        }, 300);
+
+        // 再次延迟翻译(处理更慢加载的内容)
+        setTimeout(() => walkAndTranslate(document.body), 1000);
     }
 
     // 尽早执行翻译(不等待DOMContentLoaded)

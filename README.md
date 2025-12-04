@@ -44,9 +44,11 @@
 ### 🧠 智能翻译机制
 - **文本节点翻译**：自动识别并翻译页面上的所有文本内容
 - **属性翻译**：翻译 `aria-label`、`placeholder`、`title`、`mattooltip` 等属性
+- **属性变化监听**：实时监听属性变化，解决 Angular/React 等框架重新渲染后翻译丢失的问题
 - **动态内容支持**：使用 MutationObserver 监听 DOM 变化，实时翻译新加载的内容
 - **高效遍历**：使用 TreeWalker API 高效遍历 DOM 树
 - **增量更新**：只翻译新增节点，避免重复处理
+- **智能跳过**：自动跳过 `aria-hidden="true"` 的隐藏元素，避免无效翻译
 
 ### 🔧 技术实现
 ```javascript
@@ -73,7 +75,7 @@ setTimeout(() => walkAndTranslate(document.body), 1000);
 ```
 
 ## 📝 翻译词条
-脚本内置了 300+ 常用界面术语的翻译，包括：
+脚本内置了 **290+** 常用界面术语的翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
 - 操作按钮：Run（运行）、Save（保存）、Share（分享）

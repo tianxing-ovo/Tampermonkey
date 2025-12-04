@@ -127,12 +127,13 @@
         "Generate Media": "生成媒体",
         "Generate structured output": "生成结构化输出",
         "Get": "获取",
+        "Google AI models may make mistakes, so double-check outputs.": "Google AI 模型可能会出错，请仔细核对输出结果",
         "Get API key": "获取 API 密钥",
         "Get code": "获取代码",
         "Get SDK code to chat with Gemini": "获取与 Gemini 聊天的 SDK 代码",
         "Grounding with Google Search": "基于 Google 搜索",
         "Help": "帮助",
-        "Higher resolutions may provide better understanding but use more tokens.": "更高的分辨率可以提供更好的理解，但会消耗更多令牌。",
+        "Higher resolutions may provide better understanding but use more tokens.": "更高的分辨率可以提供更好的理解，但会消耗更多令牌",
         "History": "历史记录",
         "Home": "首页",
         "Image": "图片",
@@ -174,19 +175,23 @@
         "New": "新",
         "New Chat": "新聊天",
         "No changes to save": "没有要保存的更改",
+        "No API Key": "无 API 密钥",
         "OK, got it": "好的，知道了",
         "Older": "更早",
+        "Optional tone and style instructions for the model": "模型的可选语气和风格指令",
         "Open navigation menu": "打开导航菜单",
         "Open settings menu": "打开设置菜单",
         "Output length": "输出长度",
         "Output Modalities": "输出模态",
         "Organization Members": "组织成员",
+        "Our most intelligent model with SOTA reasoning and multimodal understanding, and powerful agentic and vibe coding capabilities": "我们最智能的模型，具有最先进的推理和多模态理解能力，以及强大的智能体和氛围编码能力",
         "Organizations": "组织",
         "Overview": "概览",
         "Other": "其他",
         "Partners": "合作伙伴",
         "Plugin Ideas": "插件创意",
         "Plugin Versions": "插件版本",
+        "Playground": "演练场",
         "Presets": "预设",
         "Press": "新闻",
         "Pricing": "定价",
@@ -249,10 +254,13 @@
         "Series": "系列",
         "Stream": "实时对话",
         "Structured output": "结构化输出",
+        "Structured outputs": "结构化输出",
         "Status": "状态",
         "Studio": "工作室",
         "Summary": "概要",
         "Support": "支持",
+        "Switch to a paid API key to unlock higher quota and more features.": "切换到付费 API 密钥以解锁更高配额和更多功能",
+        "Source:": "来源：",
         "Supported Parameters": "支持的参数",
         "System": "系统",
         "System instructions": "系统指令",
@@ -270,6 +278,7 @@
         "Themes": "主题",
         "Thinking": "思考中",
         "Thinking mode": "思考模式",
+        "Thinking level": "思考级别",
         "Thoughts": "思考",
         "Today": "今天",
         "Training, Logging, & Privacy": "训练、日志与隐私",
@@ -324,12 +333,28 @@
     }
 
     /**
+     * 检查元素是否应该跳过翻译
+     * @param element 要检查的元素
+     */
+    function shouldSkipElement(element) {
+        if (!element) {
+            return false;
+        }
+        // 跳过aria-hidden=true的元素
+        return element.getAttribute('aria-hidden') === 'true';
+    }
+
+    /**
      * 翻译单个节点的文本或属性
      * @param node 要翻译的节点
      */
     function translateNode(node) {
         // 翻译元素节点的属性
         if (node.nodeType === Node.ELEMENT_NODE) {
+            // 检查元素是否应该跳过翻译
+            if (shouldSkipElement(node)) {
+                return;
+            }
             const attributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
@@ -340,6 +365,10 @@
         }
         // 翻译文本节点
         if (node.nodeType === Node.TEXT_NODE) {
+            // 检查父元素是否应该跳过翻译
+            if (shouldSkipElement(node.parentElement)) {
+                return;
+            }
             const text = node.nodeValue.trim();
             if (text && lowerCaseTranslations[text.toLowerCase()]) {
                 node.nodeValue = lowerCaseTranslations[text.toLowerCase()];
@@ -366,6 +395,11 @@
     // 使用MutationObserver来处理动态加载的内容
     const observer = new MutationObserver((mutations) => {
         for (const mutation of mutations) {
+            // 处理属性变化
+            if (mutation.type === 'attributes') {
+                translateNode(mutation.target);
+            }
+            // 处理新增节点
             for (const node of mutation.addedNodes) {
                 // 只翻译新添加的节点(不递归遍历)
                 if (node.nodeType === Node.ELEMENT_NODE || node.nodeType === Node.TEXT_NODE) {
@@ -385,7 +419,11 @@
     function initTranslation() {
         // 立即开始监听DOM变化
         observer.observe(document.body, {
-            childList: true, subtree: true, characterData: true
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['placeholder', 'aria-label', 'title', 'mattooltip']
         });
 
         // 第一次翻译

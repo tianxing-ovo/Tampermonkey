@@ -399,6 +399,10 @@
             if (mutation.type === 'attributes') {
                 translateNode(mutation.target);
             }
+            // 处理文本内容变化
+            if (mutation.type === 'characterData') {
+                translateNode(mutation.target);
+            }
             // 处理新增节点
             for (const node of mutation.addedNodes) {
                 // 只翻译新添加的节点(不递归遍历)

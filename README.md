@@ -75,8 +75,9 @@ setTimeout(() => walkAndTranslate(document.body), 1000);
 ```
 
 ## 📝 翻译词条
-脚本内置了 **290+** 常用界面术语的翻译，包括：
+脚本内置了 **350+** 常用界面术语的翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
+- 竞技场相关：Arena（竞技场）、Rank（排名）、Votes（投票）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
 - 操作按钮：Run（运行）、Save（保存）、Share（分享）
 - 更多...
@@ -93,7 +94,7 @@ const translations = {
 ```
 
 ## 📊 版本信息
-- **当前版本**：v1.0
+- **当前版本**：v1.1
 - **运行时机**：document-start（页面开始加载时）
 - **权限要求**：none（无需特殊权限）
 - **许可证**：Apache-2.0

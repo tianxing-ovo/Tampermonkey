@@ -1,6 +1,6 @@
 // ==UserScript==
 // @name         汉化脚本
-// @description  汉化脚本
+// @description  自动翻译网页中的英文内容为中文
 // @icon         https://images.icon-icons.com/3915/PNG/512/tampermonkey_logo_icon_249448.png
 // @version      1.0
 // @match        https://aistudio.google.com/*
@@ -13,6 +13,7 @@
 // @grant        none
 // @run-at       document-start
 // @license      Apache-2.0
+// @namespace https://greasyfork.org/users/1203191
 // ==/UserScript==
 // noinspection JSNonASCIINames
 
@@ -269,6 +270,7 @@
         "Technology": "技术",
         "Temperature": "温度",
         "Terms": "条款",
+        "Terms of Use": "使用条款",
         "Terms of Service": "服务条款",
         "Text": "文本",
         "Text-to-Image": "文生图",

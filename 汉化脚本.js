@@ -392,6 +392,32 @@
     }
 
     /**
+     * 翻译相对时间字符串(例如: "2 months ago")
+     * @param text 要翻译的文本
+     */
+    function translateRelativeTime(text) {
+        const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
+        const match = text.match(timeRegex);
+        if (match) {
+            // 提取数字部分
+            const num = match[1];
+            // 提取单位部分并转换为小写
+            const unit = match[2].toLowerCase();
+            const unitMap = {
+                'year': '年',
+                'month': '个月',
+                'week': '周',
+                'day': '天',
+                'hour': '小时',
+                'minute': '分钟',
+                'second': '秒'
+            };
+            return `${num} ${unitMap[unit]}前`;
+        }
+        return null;
+    }
+
+    /**
      * 翻译单个节点的文本或属性
      * @param node 要翻译的节点
      */
@@ -405,8 +431,15 @@
             const attributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
-                if (value && lowerCaseTranslations[value.toLowerCase()]) {
-                    node.setAttribute(attr, lowerCaseTranslations[value.toLowerCase()]);
+                if (value) {
+                    if (lowerCaseTranslations[value.toLowerCase()]) {
+                        node.setAttribute(attr, lowerCaseTranslations[value.toLowerCase()]);
+                    } else {
+                        const translatedTime = translateRelativeTime(value);
+                        if (translatedTime) {
+                            node.setAttribute(attr, translatedTime);
+                        }
+                    }
                 }
             }
         }
@@ -417,8 +450,15 @@
                 return;
             }
             const text = node.nodeValue.trim();
-            if (text && lowerCaseTranslations[text.toLowerCase()]) {
-                node.nodeValue = lowerCaseTranslations[text.toLowerCase()];
+            if (text) {
+                if (lowerCaseTranslations[text.toLowerCase()]) {
+                    node.nodeValue = lowerCaseTranslations[text.toLowerCase()];
+                } else {
+                    const translatedTime = translateRelativeTime(text);
+                    if (translatedTime) {
+                        node.nodeValue = translatedTime;
+                    }
+                }
             }
         }
     }
@@ -436,7 +476,33 @@
         let node;
         while (node = walker.nextNode()) {
             translateNode(node);
+            // 检查Shadow Root
+            if (node.nodeType === Node.ELEMENT_NODE && node.shadowRoot) {
+                handleShadowRoot(node.shadowRoot);
+            }
         }
+    }
+
+    // 记录已观察的Shadow Root(防止重复监听)
+    const observedRoots = new WeakSet();
+
+    /**
+     * 处理Shadow Root
+     * @param root Shadow Root节点
+     */
+    function handleShadowRoot(root) {
+        if (!root || observedRoots.has(root)) {
+            return;
+        }
+        observedRoots.add(root);
+        observer.observe(root, {
+            childList: true,
+            subtree: true,
+            characterData: true,
+            attributes: true,
+            attributeFilter: ['placeholder', 'aria-label', 'title', 'mattooltip']
+        });
+        walkAndTranslate(root);
     }
 
     // 使用MutationObserver来处理动态加载的内容
@@ -445,6 +511,9 @@
             // 处理属性变化
             if (mutation.type === 'attributes') {
                 translateNode(mutation.target);
+                if (mutation.target.shadowRoot) {
+                    handleShadowRoot(mutation.target.shadowRoot);
+                }
             }
             // 处理文本内容变化
             if (mutation.type === 'characterData') {
@@ -458,6 +527,10 @@
                     // 如果是元素节点(遍历其子节点)
                     if (node.nodeType === Node.ELEMENT_NODE) {
                         walkAndTranslate(node);
+                        // 处理Shadow Root
+                        if (node.shadowRoot) {
+                            handleShadowRoot(node.shadowRoot);
+                        }
                     }
                 }
             }

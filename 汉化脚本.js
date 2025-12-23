@@ -37,6 +37,7 @@
     // 翻译映射表(英文->中文)
     const translations = {
         "AI Assist": "AI 助手",
+        "Accessibility": "无障碍",
         "Account": "账户",
         "Actions": "操作",
         "Activity": "活动",
@@ -50,8 +51,10 @@
         "Answering": "回答",
         "Answers": "回答",
         "API Keys": "API 密钥",
+        "Appearance": "外观",
         "Articles": "文章",
         "Ask 800+ AIs anything": "询问800+人工智能任何问题",
+        "Assets": "资源",
         "Ask followup…": "进行后续询问...",
         "Ask Question": "提问",
         "Asking": "提问",
@@ -74,17 +77,20 @@
         "Challenges": "挑战",
         "Changelog": "更新日志",
         "Chat": "聊天",
+        "Chat with Copilot": "与 Copilot 聊天",
         "Chat Prompt": "聊天提示",
         "Choose models": "选择模型",
         "Clear chat": "清空聊天",
         "Close run settings panel": "关闭运行设置面板",
         "Code": "代码",
         "Code execution": "代码执行",
+        "Commits": "提交",
         "Community": "社区",
         "Companies": "公司",
         "Company": "公司",
         "Compare": "比较",
         "Compare LLMs based on their ability to generate images that match text descriptions": "比较大语言模型生成符合文本描述的图像的能力",
+        "Contact": "联系",
         "Contact Us": "联系我们",
         "Cookie Policy": "Cookie 政策",
         "Cookie Settings": "Cookie 设置",
@@ -95,43 +101,57 @@
         "Complete \"About Me\" section of user profile.": "完成用户资料中的“关于我”部分",
         "Context length": "上下文长度",
         "Copilot": "副驾驶",
+        "Copilot settings": "Copilot 设置",
         "Copy code": "复制代码",
         "Collapse to hide model thoughts": "折叠以隐藏模型想法",
+        "Create a new release": "创建新版本",
         "Create new file": "创建新文件",
         "Credits": "额度",
         "Creativity allowed in the responses": "响应中允许的创造性",
         "Customize your content by watching tags.": "通过关注标签来定制您的内容",
         "Customize your feed": "自定义您的订阅内容",
+        "Customize your pins": "自定义固定项目",
         "Dark": "深色",
         "Dashboard": "信息中心",
         "Data": "数据",
         "Datasets": "数据集",
         "Default": "默认",
         "Deploy": "部署",
+        "Deployments": "部署",
         "Disclaimer": "免责声明",
+        "Discussions": "讨论",
         "Distillable": "可蒸馏",
+        "Do not share my personal information": "不要分享我的个人信息",
         "Docs": "文档",
         "Documentation": "文档",
+        "Draft a new release": "草拟新版本",
         "Earn reputation by": "通过以下方式获得声望：",
         "Edit": "编辑",
         "Editing": "编辑",
+        "Edit profile": "编辑个人资料",
         "Edit model card": "编辑模型卡片",
         "Edu Courses": "教育课程",
         "Embeddings": "嵌入",
         "Enterprise": "企业",
+        "Enterprises": "企业",
         "Expand or collapse navigation menu": "展开/折叠导航菜单",
         "Expand to view model thoughts": "展开以查看模型想法",
         "Explain the probability of rolling two dice and getting 7": "解释掷两个骰子得到 7 的概率",
+        "Feature preview": "功能预览",
         "Featured Models": "精选模型",
         "Fetch information from web links": "从网页链接中获取信息",
         "File": "文件",
         "Files and versions": "文件和版本",
         "Filter models": "过滤模型",
         "Filter by name": "按名称筛选",
+        "Find a release": "查找版本",
         "Find answers to your technical questions and help others answer theirs.": "查找您的技术问题答案并帮助其他用户回答他们的问题",
+        "Find a repository…": "查找仓库...",
         "Following": "关注",
         "Fork": "复刻",
+        "forks": "复刻",
         "Function calling": "函数调用",
+        "Full Changelog": "完整更新日志",
         "Ignored tags": "忽略的标签",
         "Generate media": "生成媒体",
         "Generate Media": "生成媒体",
@@ -141,6 +161,8 @@
         "Get API key": "获取 API 密钥",
         "Get code": "获取代码",
         "Get SDK code to chat with Gemini": "获取与 Gemini 聊天的 SDK 代码",
+        "Gists": "代码片段",
+        "Give feedback": "反馈",
         "Go to file": "转到文件",
         "Grounding with Google Search": "基于 Google 搜索",
         "Help": "帮助",
@@ -162,9 +184,13 @@
         "Interface For LLMs": "大语言模型接口",
         "Interleaved text-and-image generation with the new Gemini 2.0 Flash": "使用新的 Gemini Flash 进行文图交错生成",
         "Issues": "议题",
+        "Join discussion": "加入讨论",
+        "Jump to": "跳转到",
         "Keys": "密钥",
         "Labs": "实验室",
+        "Language": "语言",
         "Languages": "语言",
+        "Latest": "最新",
         "Last Updated": "最后更新",
         "Leaderboard": "排行榜",
         "Leaderboard Overview": "排行榜概览",
@@ -181,6 +207,7 @@
         "Live audio-to-audio dialog": "实时音频对话",
         "Log out": "退出登录",
         "Main": "主页",
+        "Manage cookies": "管理 Cookie",
         "Maximum number of tokens in response": "响应中的最大令牌数",
         "Media Resolution": "媒体分辨率",
         "Media resolution": "媒体分辨率",
@@ -192,6 +219,8 @@
         "Native speech generation": "原生语音生成",
         "New": "新",
         "New Chat": "新聊天",
+        "No releases published": "未发布版本",
+        "No packages published": "未发布包",
         "No changes to save": "没有要保存的更改",
         "No API Key": "无 API 密钥",
         "OK, got it": "好的，知道了",
@@ -207,11 +236,13 @@
         "Organizations": "组织",
         "Overview": "概览",
         "Other": "其他",
+        "Packages": "包",
         "Partners": "合作伙伴",
         "Pin": "固定",
         "Plugin Ideas": "插件创意",
         "Plugin Versions": "插件版本",
         "Playground": "演练场",
+        "Popular repositories": "热门仓库",
         "Powered by Code Arena": "由代码竞技场驱动",
         "Presets": "预设",
         "Press": "新闻",
@@ -223,6 +254,8 @@
         "Products": "产品",
         "Professional": "专业",
         "Profile": "个人资料",
+        "Public": "公共",
+        "Publish your first package": "发布你的第一个包",
         "Projects": "项目",
         "Prompt gallery": "提示库",
         "Prompt pricing": "提示词定价",
@@ -236,7 +269,10 @@
         "Ratings & Reviews": "评分与评论",
         "Reasoning": "推理",
         "Reply": "回复",
+        "Releases": "版本",
         "Report Issue": "报告问题",
+        "Repositories": "仓库",
+        "repo:": "仓库:",
         "Reputation": "声望",
         "Responses": "回复",
         "Reset default settings": "重置默认设置",
@@ -253,8 +289,11 @@
         "Search": "搜索",
         "Search…": "搜索",
         "Search Arena": "搜索竞技场",
+        "Search in this owner": "在此所有者中搜索",
+        "Search in this repository": "在此仓库中搜索",
         "Search by model name...": "按模型名称搜索...",
         "Search models, datasets, users...": "搜索模型、数据集、用户...",
+        "Search syntax tips": "搜索语法提示",
         "Security": "安全",
         "Select a model": "选择一个模型",
         "Select or upload a file on Google Drive to include in your prompt": "在 Google Drive 上选择或上传文件以包含在您的提示中",
@@ -267,12 +306,15 @@
         "Show more": "显示更多",
         "Show more responses": "显示更多回复",
         "Show run settings": "显示运行设置",
+        "Source code": "源代码",
         "side-by-side with you": "与你并肩",
         "Sign out": "退出登录",
         "Skip to main content": "跳转到主要内容",
         "Sort": "排序",
         "Spaces": "空间",
+        "Sponsors": "赞助",
         "Start a message...": "开始一条消息...",
+        "Start a new Copilot thread": "开始新的 Copilot 会话",
         "Start typing a prompt": "开始输入提示词",
         "Start Voting": "开始投票",
         "Stack Ads": "Stack 广告",
@@ -281,6 +323,7 @@
         "Stack Internal": "Stack 内部",
         "Star": "星标",
         "Starred": "已星标",
+        "Stars": "星标",
         "Series": "系列",
         "Stream": "实时对话",
         "Style Control": "风格控制",
@@ -327,6 +370,7 @@
         "Top K": "Top-K",
         "Top P": "Top-P",
         "Truncate response including and after string": "在包含指定字符串后截断响应",
+        "Try Enterprise": "试用企业版",
         "Try Gemini's natural, real-time dialog with audio and video inputs": "体验 Gemini 带有音频和视频输入的自然、实时对话",
         "Type": "输入 ",
         "Type something or tab to choose an example prompt": "输入内容，或按 Tab 键选择示例提示",
@@ -344,6 +388,7 @@
         "Use Google Search": "使用 Google 搜索",
         "Use this model": "使用此模型",
         "User": "用户",
+        "user:": "用户:",
         "Users": "用户",
         "Version": "版本",
         "Versions": "版本",
@@ -358,12 +403,15 @@
         "Visit Arena": "访问竞技场",
         "Votes": "投票数",
         "Watch": "关注",
+        "watching": "关注",
         "Watched tags": "关注的标签",
         "WebDev": "网页开发",
+        "You reacted": "你的回应",
         "WebDev Leaderboard": "网页开发排行榜",
         "Welcome back": "欢迎回来",
         "Welcome to AI Studio": "欢迎使用 AI Studio",
         "Work Here": "在此工作",
+        "Working from home": "居家办公",
         "What's new": "新增功能",
         "Wiki": "维基",
         "World's smartest AIs,": "世界最聪明的人工智能,",
@@ -385,6 +433,10 @@
      */
     function shouldSkipElement(element) {
         if (!element) {
+            return false;
+        }
+        // GitHub不跳过aria-hidden=true的元素
+        if (location.hostname.includes('github.com')) {
             return false;
         }
         // 跳过aria-hidden=true的元素
@@ -418,6 +470,32 @@
     }
 
     /**
+     * 翻译统计信息(例如: "5 stars")
+     * 支持包含数字和空格的模式
+     * @param text 要翻译的文本
+     */
+    function translateStat(text) {
+        // 模式: 可选空白 + 可选(+) + 可选数字 + 可选空白 + 单词(必须在翻译表中) + 可选空白
+        const statRegex = /^(\s*)(\+\s*)?(\d+(?:\.\d+)?[km]?\+?)?(\s*)([a-zA-Z]+)(\s*)$/i;
+        const match = text.match(statRegex);
+        if (match) {
+            const prefixSpace = match[1];
+            const plusPart = match[2] || '';
+            const number = match[3] || '';
+            const middleSpace = match[4];
+            const word = match[5];
+            const suffixSpace = match[6];
+            // 尝试查找单词的翻译
+            const lowerWord = word.toLowerCase();
+            if (lowerCaseTranslations[lowerWord]) {
+                const translatedWord = lowerCaseTranslations[lowerWord];
+                return `${prefixSpace}${plusPart}${number}${middleSpace}${translatedWord}${suffixSpace}`;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 翻译单个节点的文本或属性
      * @param node 要翻译的节点
      */
@@ -432,12 +510,20 @@
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
                 if (value) {
+                    // 检查是否直接在翻译表中
                     if (lowerCaseTranslations[value.toLowerCase()]) {
                         node.setAttribute(attr, lowerCaseTranslations[value.toLowerCase()]);
                     } else {
+                        // 尝试翻译相对时间
                         const translatedTime = translateRelativeTime(value);
                         if (translatedTime) {
                             node.setAttribute(attr, translatedTime);
+                        } else {
+                            // 尝试翻译统计信息
+                            const translatedStat = translateStat(value);
+                            if (translatedStat) {
+                                node.setAttribute(attr, translatedStat);
+                            }
                         }
                     }
                 }
@@ -449,19 +535,37 @@
             if (shouldSkipElement(node.parentElement)) {
                 return;
             }
-            const text = node.nodeValue.trim();
-            if (text) {
-                if (lowerCaseTranslations[text.toLowerCase()]) {
-                    node.nodeValue = lowerCaseTranslations[text.toLowerCase()];
+            const text = node.nodeValue;
+            const trimmedText = text.trim();
+            if (trimmedText) {
+                // 检查是否直接在翻译表中
+                if (lowerCaseTranslations[trimmedText.toLowerCase()]) {
+                    if (trimmedText.includes(' ')) {
+                        node.nodeValue = lowerCaseTranslations[trimmedText.toLowerCase()];
+                    } else {
+                        // 尝试翻译统计信息
+                        const translatedStat = translateStat(text);
+                        if (translatedStat) {
+                            node.nodeValue = translatedStat;
+                        }
+                    }
                 } else {
+                    // 尝试翻译相对时间
                     const translatedTime = translateRelativeTime(text);
                     if (translatedTime) {
                         node.nodeValue = translatedTime;
+                    } else {
+                        // 尝试翻译统计信息
+                        const translatedStat = translateStat(text);
+                        if (translatedStat) {
+                            node.nodeValue = translatedStat;
+                        }
                     }
                 }
             }
         }
     }
+
 
     /**
      * 遍历指定根节点下的所有节点并应用翻译

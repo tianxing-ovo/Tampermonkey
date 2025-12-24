@@ -54,6 +54,7 @@
         "Answers": "回答",
         "API Keys": "API 密钥",
         "Appearance": "外观",
+        "Arena Overview": "竞技场概览",
         "Archived": "已归档",
         "Articles": "文章",
         "Assistive": "辅助",
@@ -91,6 +92,7 @@
         "Code execution": "代码执行",
         "Commits": "提交",
         "Community": "社区",
+        "Compact View": "紧凑视图",
         "Companies": "公司",
         "Company": "公司",
         "Compare": "比较",
@@ -126,6 +128,7 @@
         "Date pushed": "推送日期",
         "Datasets": "数据集",
         "Default": "默认",
+        "💬 Default": "默认",
         "Deploy": "部署",
         "Deployments": "部署",
         "Disclaimer": "免责声明",
@@ -158,6 +161,7 @@
         "Feed": "动态",
         "Fetch information from web links": "从网页链接中获取信息",
         "File": "文件",
+        "First Place": "第一名",
         "Files": "文件",
         "Files and versions": "文件和版本",
         "Filter models": "过滤模型",
@@ -345,10 +349,12 @@
         "Search in this owner": "在此所有者中搜索",
         "Search in this organization": "在此组织中搜索",
         "Search in this repository": "在此仓库中搜索",
+        "Scroll to the right to see full stats of each model": "向右滚动查看每个模型的完整统计信息",
         "Search by model name...": "按模型名称搜索...",
         "Search models, datasets, users...": "搜索模型、数据集、用户...",
         "Search syntax tips": "搜索语法提示",
         "Security": "安全",
+        "Second Place": "第二名",
         "Select a model": "选择一个模型",
         "Select or upload a file on Google Drive to include in your prompt": "在 Google Drive 上选择或上传文件以包含在您的提示中",
         "Send message": "发送消息",
@@ -378,6 +384,7 @@
         "Stack Data Licensing": "Stack 数据许可",
         "Stack Exchange Network": "Stack 交换网络",
         "Stack Internal": "Stack 内部",
+        "Standard View": "标准视图",
         "Star": "星标",
         "Starred": "已星标",
         "Stars": "星标",
@@ -415,6 +422,7 @@
         "Thinking": "思考中",
         "Thinking mode": "思考模式",
         "Thinking level": "思考级别",
+        "Third Place": "第三名",
         "Thoughts": "思考",
         "to search": " 搜索",
         "Today": "今天",
@@ -448,6 +456,7 @@
         "URL context tool": "网址上下文工具",
         "Usage & Billing": "用量和结算",
         "Use Google Search": "使用 Google 搜索",
+        "🇺🇸 Language": "语言",
         "Use this model": "使用此模型",
         "User": "用户",
         "user:": "用户:",
@@ -501,10 +510,6 @@
     function shouldSkipElement(element) {
         if (!element) {
             return false;
-        }
-        // 跳过可编辑元素
-        if (element.isContentEditable) {
-            return true;
         }
         // GitHub不跳过aria-hidden=true的元素
         if (location.hostname.includes('github.com')) {

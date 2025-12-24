@@ -45,6 +45,8 @@
         "Add file": "添加文件",
         "Add stop sequence": "添加停止序列",
         "Add stop...": "添加停止序列...",
+        "Advanced": "高级",
+        "Advanced search": "高级搜索",
         "Advanced settings": "高级设置",
         "All actions": "所有操作",
         "Announcements": "公告",
@@ -52,7 +54,9 @@
         "Answers": "回答",
         "API Keys": "API 密钥",
         "Appearance": "外观",
+        "Archived": "已归档",
         "Articles": "文章",
+        "Assistive": "辅助",
         "Ask 800+ AIs anything": "询问800+人工智能任何问题",
         "Assets": "资源",
         "Ask followup…": "进行后续询问...",
@@ -64,6 +68,7 @@
         "Badge progress": "徽章进度",
         "Based on your viewing history and watched tags.": "基于您的浏览历史和关注的标签",
         "Badges": "徽章",
+        "Best match": "最佳匹配",
         "Bounties": "悬赏",
         "Branch": "分支",
         "Broadcast": "广播",
@@ -102,9 +107,12 @@
         "Context length": "上下文长度",
         "Copilot": "副驾驶",
         "Copilot settings": "Copilot 设置",
+        "Codespaces": "代码空间",
         "Copy code": "复制代码",
         "Collapse to hide model thoughts": "折叠以隐藏模型想法",
         "Create a new release": "创建新版本",
+        "Create list": "创建列表",
+        "Create new…": "新建",
         "Create new file": "创建新文件",
         "Credits": "额度",
         "Creativity allowed in the responses": "响应中允许的创造性",
@@ -114,6 +122,8 @@
         "Dark": "深色",
         "Dashboard": "信息中心",
         "Data": "数据",
+        "Date created": "创建日期",
+        "Date pushed": "推送日期",
         "Datasets": "数据集",
         "Default": "默认",
         "Deploy": "部署",
@@ -124,6 +134,7 @@
         "Do not share my personal information": "不要分享我的个人信息",
         "Docs": "文档",
         "Documentation": "文档",
+        "Download for": "下载",
         "Draft a new release": "草拟新版本",
         "Earn reputation by": "通过以下方式获得声望：",
         "Edit": "编辑",
@@ -134,15 +145,23 @@
         "Embeddings": "嵌入",
         "Enterprise": "企业",
         "Enterprises": "企业",
+        "Exclude archived": "排除归档",
+        "Explore": "探索",
         "Expand or collapse navigation menu": "展开/折叠导航菜单",
         "Expand to view model thoughts": "展开以查看模型想法",
         "Explain the probability of rolling two dice and getting 7": "解释掷两个骰子得到 7 的概率",
         "Feature preview": "功能预览",
         "Featured Models": "精选模型",
+        "Fewest downloads": "最少下载",
+        "Fewest forks": "最少复刻",
+        "Fewest stars": "最少星标",
+        "Feed": "动态",
         "Fetch information from web links": "从网页链接中获取信息",
         "File": "文件",
+        "Files": "文件",
         "Files and versions": "文件和版本",
         "Filter models": "过滤模型",
+        "Filter by": "筛选条件",
         "Filter by name": "按名称筛选",
         "Find a release": "查找版本",
         "Find answers to your technical questions and help others answer theirs.": "查找您的技术问题答案并帮助其他用户回答他们的问题",
@@ -150,9 +169,12 @@
         "Following": "关注",
         "Fork": "复刻",
         "forks": "复刻",
+        "Free": "免费",
         "Function calling": "函数调用",
         "Full Changelog": "完整更新日志",
+        "Future ideas": "未来的想法",
         "Ignored tags": "忽略的标签",
+        "Import repository": "导入仓库",
         "Generate media": "生成媒体",
         "Generate Media": "生成媒体",
         "Generate structured output": "生成结构化输出",
@@ -175,9 +197,11 @@
         "Compare models based on their ability to generate and edit images": "比较模型生成和编辑图片的能力",
         "Image-to-Video": "图生视频",
         "Image-to-Video Arena": "图生视频竞技场",
+        "✨ Inspiration": "✨ 灵感",
         "Input Modalities": "输入模态",
         "Insert assets such as images, videos, files, or audio": "插入图片、视频、文件或音频等资源",
         "Insert assets such as images, videos, folders, files, or audio": "插入图片、视频、文件夹、文件或音频等资源",
+        "Inspiration": "灵感",
         "Insights": "洞察",
         "Integrations (BYOK)": "集成 (BYOK)",
         "Interesting posts for you": "为你推荐的有趣帖子",
@@ -199,8 +223,10 @@
         "Lets Gemini use code to solve complex tasks": "让 Gemini 使用代码解决复杂任务",
         "Lets you define functions that Gemini can call": "让您可以定义 Gemini 能够调用的函数",
         "Legal": "法律",
+        "Least recently updated": "最久未更新",
         "License": "许可证",
         "Libraries": "库",
+        "Lists": "列表",
         "Licenses": "许可证",
         "Life & arts": "生活与艺术",
         "Light": "浅色",
@@ -208,23 +234,44 @@
         "Log out": "退出登录",
         "Main": "主页",
         "Manage cookies": "管理 Cookie",
+        "Marketplace": "市场",
         "Maximum number of tokens in response": "响应中的最大令牌数",
         "Media Resolution": "媒体分辨率",
         "Media resolution": "媒体分辨率",
+        "MCP registry": "MCP 注册表",
         "Model": "模型",
         "Model Authors": "模型作者",
         "Model card": "模型卡片",
+        "Most downloads": "最多下载",
+        "Most forks": "最多复刻",
+        "Most stars": "最多星标",
+        "My stack": "我的技术栈",
+        "More": "更多",
+        "More options": "更多选项",
+        "Number of followers": "关注者数量",
+        "Number of forks": "复刻数量",
+        "Number of stars": "星标数量",
         "Models": "模型",
         "Native image generation": "原生图片生成",
         "Native speech generation": "原生语音生成",
         "New": "新",
+        "Newest": "最新",
         "New Chat": "新聊天",
+        "New conversation in": "新对话始于",
+        "New codespace": "新建代码空间",
+        "New gist": "新建代码片段",
+        "New issue": "新建议题",
+        "New organization": "新建组织",
+        "New project": "新建项目",
+        "New repository": "新建仓库",
         "No releases published": "未发布版本",
         "No packages published": "未发布包",
         "No changes to save": "没有要保存的更改",
         "No API Key": "无 API 密钥",
         "OK, got it": "好的，知道了",
+        "Oldest": "最旧",
         "Older": "更早",
+        "Owner": "所有者",
         "Optional tone and style instructions for the model": "模型的可选语气和风格指令",
         "Open navigation menu": "打开导航菜单",
         "Open settings menu": "打开设置菜单",
@@ -247,6 +294,7 @@
         "Presets": "预设",
         "Press": "新闻",
         "Pricing": "定价",
+        "Private": "私有",
         "Privacy": "隐私",
         "Privacy Policy": "隐私政策",
         "Provisioning Keys": "配置密钥",
@@ -267,6 +315,8 @@
         "(Upper-Lower)": "(上限-下限)",
         "Rankings": "排名",
         "Ratings & Reviews": "评分与评论",
+        "result": "结果",
+        "results": "结果",
         "Reasoning": "推理",
         "Reply": "回复",
         "Releases": "版本",
@@ -274,6 +324,7 @@
         "Repositories": "仓库",
         "repo:": "仓库:",
         "Reputation": "声望",
+        "Recently updated": "最近更新",
         "Responses": "回复",
         "Reset default settings": "重置默认设置",
         "Reset Filters": "重置筛选条件",
@@ -282,14 +333,17 @@
         "Run prompt": "运行提示",
         "Run settings": "运行设置",
         "Safety settings": "安全设置",
+        "Save": "保存",
         "Save prompt": "保存提示",
         "Saves": "收藏",
         "Science": "科学",
         "Score": "分数",
         "Search": "搜索",
         "Search…": "搜索",
+        "Search all of GitHub": "搜索整个 GitHub",
         "Search Arena": "搜索竞技场",
         "Search in this owner": "在此所有者中搜索",
+        "Search in this organization": "在此组织中搜索",
         "Search in this repository": "在此仓库中搜索",
         "Search by model name...": "按模型名称搜索...",
         "Search models, datasets, users...": "搜索模型、数据集、用户...",
@@ -309,9 +363,12 @@
         "Source code": "源代码",
         "side-by-side with you": "与你并肩",
         "Sign out": "退出登录",
+        "Size": "大小",
         "Skip to main content": "跳转到主要内容",
         "Sort": "排序",
+        "Sort by:": "排序方式:",
         "Spaces": "空间",
+        "Sponsor": "赞助",
         "Sponsors": "赞助",
         "Start a message...": "开始一条消息...",
         "Start a new Copilot thread": "开始新的 Copilot 会话",
@@ -336,6 +393,7 @@
         "Switch to a paid API key to unlock higher quota and more features.": "切换到付费 API 密钥以解锁更高配额和更多功能",
         "Source:": "来源：",
         "Supported Parameters": "支持的参数",
+        "Symbol": "符号",
         "System": "系统",
         "System instructions": "系统指令",
         "Tags": "标签",
@@ -368,7 +426,10 @@
         "Total Models": "模型总数",
         "Total Votes": "投票总数",
         "Top K": "Top-K",
+        "Top repositories": "热门仓库",
         "Top P": "Top-P",
+        "Topic": "话题",
+        "Topics": "话题",
         "Truncate response including and after string": "在包含指定字符串后截断响应",
         "Try Enterprise": "试用企业版",
         "Try Gemini's natural, real-time dialog with audio and video inputs": "体验 Gemini 带有音频和视频输入的自然、实时对话",
@@ -382,6 +443,7 @@
         "Upload Image": "上传图片",
         "Video": "视频",
         "View rankings across various LLMs on their versatility, linguistic precision, and cultural context across text": "查看各种大语言模型在多功能性、语言精确度和文化语境方面的排名",
+        "Unstar": "取消星标",
         "URL context": "网址上下文",
         "URL context tool": "网址上下文工具",
         "Usage & Billing": "用量和结算",
@@ -395,6 +457,7 @@
         "View": "查看",
         "View all": "查看全部",
         "View rankings across multimodal, generative AI models capable of understanding and processing visual inputs": "查看能够理解和处理视觉输入的多模态生成式人工智能模型的排名",
+        "View search docs": "查看搜索文档",
         "View more actions": "查看更多操作",
         "View status": "查看状态",
         "View Trending": "查看趋势",
@@ -414,9 +477,13 @@
         "Working from home": "居家办公",
         "What's new": "新增功能",
         "Wiki": "维基",
+        "Wikis": "维基",
         "World's smartest AIs,": "世界最聪明的人工智能,",
         "Write Review": "写评论",
         "Your": "你的",
+        "Your issues": "您的问题",
+        "Your pull requests": "您的拉取请求",
+        "You have no unread notifications": "您没有未读通知",
         "You need to create and run a prompt in order to share it": "您需要创建并运行一个提示才能分享它",
         "(experimental)": "(实验的)"
     };
@@ -435,9 +502,18 @@
         if (!element) {
             return false;
         }
+        // 跳过可编辑元素
+        if (element.isContentEditable) {
+            return true;
+        }
         // GitHub不跳过aria-hidden=true的元素
         if (location.hostname.includes('github.com')) {
-            return false;
+            // 跳过搜索框构建器输入内容
+            if (element.closest('.QueryBuilder-StyledInputContent')) {
+                return true;
+            }
+            // 跳过搜索框构建器结果列表中的建议文本(保留描述文本翻译)
+            return !!(element.closest('.QueryBuilder-ListItem') && element.closest('.ActionListItem-label'));
         }
         // 跳过aria-hidden=true的元素
         return element.getAttribute('aria-hidden') === 'true';
@@ -540,14 +616,16 @@
             if (trimmedText) {
                 // 检查是否直接在翻译表中
                 if (lowerCaseTranslations[trimmedText.toLowerCase()]) {
-                    if (trimmedText.includes(' ')) {
-                        node.nodeValue = lowerCaseTranslations[trimmedText.toLowerCase()];
-                    } else {
+                    // 检查是否为统计单词
+                    const statKeys = ['stars', 'watching', 'forks'];
+                    if (statKeys.includes(trimmedText.toLowerCase())) {
                         // 尝试翻译统计信息
                         const translatedStat = translateStat(text);
                         if (translatedStat) {
                             node.nodeValue = translatedStat;
                         }
+                    } else {
+                        node.nodeValue = lowerCaseTranslations[trimmedText.toLowerCase()];
                     }
                 } else {
                     // 尝试翻译相对时间
@@ -680,6 +758,6 @@
                 initTranslation();
             }
         });
-        bodyObserver.observe(document.documentElement, {childList: true});
+        bodyObserver.observe(document.documentElement, { childList: true });
     }
 })();

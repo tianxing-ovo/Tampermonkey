@@ -259,6 +259,7 @@
         "Join discussion": "加入讨论",
         "Jump to": "跳转到",
         "Keys": "密钥",
+        "last year": "去年",
         "Labs": "实验室",
         "Language": "语言",
         "Languages": "语言",

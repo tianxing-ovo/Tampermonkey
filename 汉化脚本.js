@@ -606,6 +606,10 @@
             if (element.closest('.QueryBuilder-StyledInputContent')) {
                 return true;
             }
+            // 跳过代码文件/文件夹名称
+            if (element.closest('.react-directory-filename-cell')) {
+                return true;
+            }
             // 跳过搜索框构建器结果列表中的建议文本(保留描述文本翻译)
             return !!(element.closest('.QueryBuilder-ListItem') && element.closest('.ActionListItem-label'));
         }

@@ -319,6 +319,7 @@
         "New organization": "新建组织",
         "New project": "新建项目",
         "New repository": "新建仓库",
+        "now": "现在",
         "Notifications": "通知",
         "No releases published": "未发布版本",
         "No packages published": "未发布包",
@@ -576,6 +577,7 @@
         "World's smartest AIs,": "世界最聪明的人工智能,",
         "Wrapped": "年度回顾",
         "Write Review": "写评论",
+        "yesterday": "昨天",
         "Your": "你的",
         "Your issues": "您的问题",
         "Your pull requests": "您的拉取请求",
@@ -611,7 +613,45 @@
                 return true;
             }
             // 跳过搜索框构建器结果列表中的建议文本(保留描述文本翻译)
-            return !!(element.closest('.QueryBuilder-ListItem') && element.closest('.ActionListItem-label'));
+            if (element.closest('.QueryBuilder-ListItem') && element.closest('.ActionListItem-label')) {
+                return true;
+            }
+            // 跳过代码区域(textarea / pre / code / GitHub特有的代码视图类)
+            const codeSelectors = [
+                'textarea',
+                'pre',
+                'code',
+                '.blob-code',
+                '.blob-code-inner',
+                '.blob-wrapper',
+                '.react-blob-print-hide',
+                '.react-code-text',
+                '.react-file-line',
+                '.react-code-file-contents',
+                '.highlight',
+                '.CodeMirror',
+                '.monaco-editor',
+                '.notranslate',
+                '.markdown-body pre',
+                '.markdown-body code',
+                '[data-testid="read-only-cursor-text-area"]',
+                '[data-testid="code-cell"]',
+                '[data-testid="code-lines-container"]'
+            ];
+            if (element.closest(codeSelectors.join(', '))) {
+                return true;
+            }
+            // 检查元素自身或祖先是否有 pl-* 类(GitHub语法高亮类)
+            let current = element;
+            while (current && current !== document.body) {
+                if (current.className && typeof current.className === 'string') {
+                    // 检查是否有以 pl- 开头的类名
+                    if (current.className.split(' ').some(cls => cls.startsWith('pl-'))) {
+                        return true;
+                    }
+                }
+                current = current.parentElement;
+            }
         }
         // 跳过aria-hidden=true的元素
         return element.getAttribute('aria-hidden') === 'true';

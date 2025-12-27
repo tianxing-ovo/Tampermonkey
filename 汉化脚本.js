@@ -602,7 +602,6 @@
         if (!element) {
             return false;
         }
-        // GitHub不跳过aria-hidden=true的元素
         if (location.hostname.includes('github.com')) {
             // 跳过搜索框构建器输入内容
             if (element.closest('.QueryBuilder-StyledInputContent')) {
@@ -652,6 +651,8 @@
                 }
                 current = current.parentElement;
             }
+            // GitHub不跳过aria-hidden=true的元素
+            return false;
         }
         // 跳过aria-hidden=true的元素
         return element.getAttribute('aria-hidden') === 'true';

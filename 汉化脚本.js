@@ -59,6 +59,7 @@
         "Appearance": "外观",
         "Arena Overview": "竞技场概览",
         "Applications": "应用程序",
+        "Apps": "应用",
         "Archived": "已归档",
         "Archives": "归档",
         "Articles": "文章",
@@ -133,6 +134,7 @@
         "Copilot settings": "Copilot 设置",
         "Codespaces": "代码空间",
         "Collaborators": "协作者",
+        "Copy": "复制",
         "Copy code": "复制代码",
         "Collapse to hide model thoughts": "折叠以隐藏模型想法",
         "Create": "创建",
@@ -363,6 +365,7 @@
         "Password and authentication": "密码和身份验证",
         "People will be able to leave comments and reactions on this release using Discussions.": "用户将可以通过讨论区对此版本发表评论和反应",
         "Pin": "固定",
+        "Performance": "性能",
         "Pick a branch or recent commit": "选择分支或最近提交",
         "Plugin Ideas": "插件创意",
         "Plugin Versions": "插件版本",
@@ -395,6 +398,7 @@
         "Providers": "提供商",
         "Provider / Model": "提供商 / 模型",
         "Pull requests": "拉取请求",
+        "Quickstart": "快速入门",
         "Q&A": "问答",
         "Questions": "问答",
         "Rank": "排名",
@@ -561,6 +565,7 @@
         "Upload File": "上传文件",
         "Upload files": "上传文件",
         "Upload Image": "上传图片",
+        "Uptime": "运行时间",
         "Usage": "用量",
         "Upgrade": "升级",
         "Video": "视频",
@@ -635,6 +640,32 @@
         if (!element) {
             return false;
         }
+        // 跳过代码区域(textarea / pre / code / GitHub特有的代码视图类 / 其他常用编辑器)
+        const codeSelectors = [
+            'textarea',
+            'pre',
+            'code',
+            '.blob-code',
+            '.blob-code-inner',
+            '.blob-wrapper',
+            '.react-blob-print-hide',
+            '.react-code-text',
+            '.react-file-line',
+            '.react-code-file-contents',
+            '.highlight',
+            '.CodeMirror',
+            '.monaco-editor',
+            '.notranslate',
+            '.markdown-body pre',
+            '.markdown-body code',
+            '[data-testid="read-only-cursor-text-area"]',
+            '[data-testid="code-cell"]',
+            '[data-testid="code-lines-container"]'
+        ];
+        if (element.closest(codeSelectors.join(', '))) {
+            return true;
+        }
+        // GitHub特殊处理
         if (location.hostname.includes('github.com')) {
             // 跳过搜索框构建器输入内容
             if (element.closest('.QueryBuilder-StyledInputContent')) {
@@ -646,31 +677,6 @@
             }
             // 跳过搜索框构建器结果列表中的建议文本(保留描述文本翻译)
             if (element.closest('.QueryBuilder-ListItem') && element.closest('.ActionListItem-label')) {
-                return true;
-            }
-            // 跳过代码区域(textarea / pre / code / GitHub特有的代码视图类)
-            const codeSelectors = [
-                'textarea',
-                'pre',
-                'code',
-                '.blob-code',
-                '.blob-code-inner',
-                '.blob-wrapper',
-                '.react-blob-print-hide',
-                '.react-code-text',
-                '.react-file-line',
-                '.react-code-file-contents',
-                '.highlight',
-                '.CodeMirror',
-                '.monaco-editor',
-                '.notranslate',
-                '.markdown-body pre',
-                '.markdown-body code',
-                '[data-testid="read-only-cursor-text-area"]',
-                '[data-testid="code-cell"]',
-                '[data-testid="code-lines-container"]'
-            ];
-            if (element.closest(codeSelectors.join(', '))) {
                 return true;
             }
             // 检查元素自身或祖先是否有 pl-* 类(GitHub语法高亮类)

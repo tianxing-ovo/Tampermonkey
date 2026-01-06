@@ -11,6 +11,7 @@
 - **OpenRouter AI** - `https://openrouter.ai/*`
 - **Stack Overflow** - `https://stackoverflow.com/*`
 - **Hugging Face** - `https://huggingface.co/*`
+- **GitHub** - `https://github.com/*`
 
 ## 🚀 安装方法
 
@@ -75,7 +76,8 @@ setTimeout(() => walkAndTranslate(document.body), 1000);
 ```
 
 ## 📝 翻译词条
-脚本内置了 **350+** 常用界面术语的翻译，包括：
+
+脚本内置了 **400+** 常用界面术语的翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 竞技场相关：Arena（竞技场）、Rank（排名）、Votes（投票）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
@@ -94,7 +96,8 @@ const translations = {
 ```
 
 ## 📊 版本信息
-- **当前版本**：v1.1
+
+- **当前版本**：v1.2
 - **运行时机**：document-start（页面开始加载时）
 - **权限要求**：none（无需特殊权限）
 - **许可证**：Apache-2.0

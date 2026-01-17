@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         汉化脚本
 // @description  自动翻译网页中的英文内容为中文
-// @icon         https://images.icon-icons.com/3915/PNG/512/tampermonkey_logo_icon_249448.png
+// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
 // @version      1.2
 // @author       tianxing
 // @match        https://aistudio.google.com/*
@@ -16,6 +16,8 @@
 // @run-at       document-start
 // @license      Apache-2.0
 // @namespace    https://greasyfork.org/users/1203191
+// @homepageURL  https://github.com/tianxing-ovo/Tampermonkey
+// @supportURL   https://github.com/tianxing-ovo/Tampermonkey/issues
 // ==/UserScript==
 // noinspection JSNonASCIINames
 

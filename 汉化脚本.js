@@ -6,7 +6,7 @@
 // @author       tianxing
 // @match        https://aistudio.google.com/*
 // @match        https://yupp.ai/*
-// @match        https://lmarena.ai/*
+// @match        https://arena.ai/*
 // @match        https://plugins.jetbrains.com/*
 // @match        https://openrouter.ai/*
 // @match        https://stackoverflow.com/*

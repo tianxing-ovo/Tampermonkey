@@ -6,7 +6,7 @@
 ## 🌐 支持的网站
 - **Google AI Studio** - `https://aistudio.google.com/*`
 - **Yupp AI** - `https://yupp.ai/*`
-- **LM Arena** - `https://lmarena.ai/*`
+- **LM Arena** - `https://arena.ai/*`
 - **JetBrains Plugins** - `https://plugins.jetbrains.com/*`
 - **OpenRouter AI** - `https://openrouter.ai/*`
 - **Stack Overflow** - `https://stackoverflow.com/*`

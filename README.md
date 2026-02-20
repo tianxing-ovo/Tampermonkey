@@ -33,9 +33,9 @@
 
 ### ⚡ 高性能加载
 - **极速启动**：不等待 DOMContentLoaded，body 存在即开始翻译
-- **非阻塞渲染**：使用 `requestIdleCallback` 在浏览器空闲时翻译
-- **快速显示**：页面加载速度不受影响，用户体验流畅
-- **智能调度**：100ms 超时保证翻译及时完成
+- **高频操作批处理**：利用 `requestAnimationFrame` 把同一帧内产生的多次 DOM 改动合并处理
+- **高效遍历**：使用 `TreeWalker API` 高效遍历 DOM 树
+- **预编译优化**：正则表达式和选择器字符串提升为模块级常量，避免重复创建
 
 ### 🎯 无闪烁翻译
 - 页面加载时先隐藏内容，翻译完成后再显示
@@ -53,31 +53,30 @@
 
 ### 🔧 技术实现
 ```javascript
-// 1. 页面加载时立即隐藏内容（防闪烁）
-document.documentElement.classList.add('translating');
+// 1. 页面加载前注入 CSS 阻止闪烁
+style.textContent = `html.translating { visibility: hidden !important; }`;
+document.documentElement.appendChild(style);
 
-// 2. body 存在即开始（不等待 DOMContentLoaded）
-if (document.body) {
-    initTranslation();
-}
+// 2. 预编译选择器字符串和正则表达式(避免每次函数调用重建)
+const codeSelectorsStr = ['pre', 'code', '.blob-code' /* ... */].join(', ');
+const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
 
-// 3. 使用 requestIdleCallback 非阻塞翻译
-requestIdleCallback(() => {
-    walkAndTranslate(document.body);
-    document.documentElement.classList.remove('translating');
-}, { timeout: 100 });
+// 3. TreeWalker 高效遍历 DOM 树
+const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null);
 
-// 4. 立即监听 DOM 变化（不等翻译完成）
-observer.observe(document.body, {...});
-
-// 5. 延迟翻译（处理 SPA 框架动态渲染的内容）
-setTimeout(() => walkAndTranslate(document.body), 300);
-setTimeout(() => walkAndTranslate(document.body), 1000);
+// 4. MutationObserver + requestAnimationFrame 异步批处理
+const observer = new MutationObserver(mutations => {
+    pendingMutations.push(...mutations);
+    if (!rafScheduled) {
+        rafScheduled = true;
+        requestAnimationFrame(processPendingMutations);
+    }
+});
 ```
 
 ## 📝 翻译词条
 
-脚本内置了 **400+** 常用界面术语的翻译，包括：
+脚本内置了 **700+** 常用界面术语的翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 竞技场相关：Arena（竞技场）、Rank（排名）、Votes（投票）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
@@ -97,7 +96,7 @@ const translations = {
 
 ## 📊 版本信息
 
-- **当前版本**：v1.2
+- **当前版本**：1.3
 - **运行时机**：document-start（页面开始加载时）
 - **权限要求**：none（无需特殊权限）
 - **许可证**：Apache-2.0
@@ -111,10 +110,11 @@ A: 可能是该文本不在翻译映射表中，你可以手动添加到 `transl
 A: 不会。脚本使用了防闪烁机制，页面会在翻译完成后才显示。
 
 **Q: 会影响页面加载速度吗？**  
-A: 不会。脚本使用了 `requestIdleCallback` 在浏览器空闲时执行翻译，不会阻塞页面渲染和交互，加载速度几乎不受影响。
+A: 基本不会。脚本利用 `TreeWalker API` 在底层高效遍历，并通过 `requestAnimationFrame` 将动态渲染时的海量 DOM
+修改进行批处理与去重合并。核心代码预编译了正则，采用了纯净的字典极致查询，大大减轻了重绘压力。
 
 **Q: 翻译需要多久完成？**  
-A: 通常在 100ms 内完成，用户几乎感觉不到延迟。
+A: 通常都是毫秒级无缝完成。
 
 **Q: 支持其他网站吗？**  
 A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
@@ -124,10 +124,10 @@ A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
 脚本采用了多项性能优化技术：
 
 1. **提前执行**：不等待 DOMContentLoaded，只要 body 存在就开始翻译
-2. **空闲调度**：使用 `requestIdleCallback` 在浏览器空闲时执行，不阻塞主线程
-3. **增量翻译**：MutationObserver 只处理新增节点，避免重复遍历
+2. **批处理节流**：使用 `requestAnimationFrame` 将 `MutationObserver` 高频触发的 DOM 更新合并到一帧中集中处理
+3. **预编译常量**：正则表达式、选择器字符串等提升为模块级常量，避免在高频函数中重复创建
 4. **高效遍历**：使用 TreeWalker API 而非递归，性能更优
-5. **并行监听**：翻译和 DOM 监听同时进行，不漏掉动态内容
+5. **智能跳过**：自动跳过代码块、编辑器、语法高亮等区域，避免无效翻译
 6. **SPA 支持**：延迟翻译机制确保 React/Vue 等框架动态渲染的内容也能被翻译
 
 ## 🤝 贡献指南
@@ -139,7 +139,8 @@ A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
 - 添加新的翻译词条
 
 ## 📄 许可证
-本项目采用 Apache-2.0 许可证开源
+
+本项目采用 [Apache-2.0](LICENSE) 许可证开源
 
 ## 📮 联系方式
 如有问题或建议，欢迎通过 Issue 反馈

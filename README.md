@@ -34,37 +34,45 @@
 ### ⚡ 高性能加载
 - **极速启动**：不等待 DOMContentLoaded，body 存在即开始翻译
 - **高频操作批处理**：利用 `requestAnimationFrame` 把同一帧内产生的多次 DOM 改动合并处理
-- **高效遍历**：使用 `TreeWalker API` 高效遍历 DOM 树
-- **预编译优化**：正则表达式和选择器字符串提升为模块级常量，避免重复创建
-
-### 🎯 无闪烁翻译
-- 页面加载时先隐藏内容，翻译完成后再显示
-- 避免用户看到英文到中文的切换过程
-- 提供流畅的视觉体验
+- **Set 去重**：同一帧内相同节点的重复变更只处理一次，避免高频渲染风暴
+- **高效遍历**：使用 `TreeWalker API` 配合 `NodeFilter` 直接裁剪整个不可翻译子树
+- **预编译优化**：正则表达式、选择器字符串、属性名数组、标签集合等全部提升为模块级常量
+- **高性能数据结构**：翻译字典使用 `Map`（O(1) 哈希查找），统计关键词使用 `Set`（O(1) 成员检测）
+- **常量提升**：域名判断 `isGitHub` 等运行时不变量只计算一次，避免高频字符串匹配
 
 ### 🧠 智能翻译机制
 - **文本节点翻译**：自动识别并翻译页面上的所有文本内容
 - **属性翻译**：翻译 `aria-label`、`placeholder`、`title`、`mattooltip` 等属性
 - **属性变化监听**：实时监听属性变化，解决 Angular/React 等框架重新渲染后翻译丢失的问题
 - **动态内容支持**：使用 MutationObserver 监听 DOM 变化，实时翻译新加载的内容
-- **高效遍历**：使用 TreeWalker API 高效遍历 DOM 树
+- **变更值校验**：翻译前对比新旧值，仅在内容实际变化时才修改 DOM，防止与框架产生无限循环
 - **增量更新**：只翻译新增节点，避免重复处理
-- **智能跳过**：自动跳过 `aria-hidden="true"` 的隐藏元素，避免无效翻译
+- **智能跳过**：自动跳过代码块、编辑器、语法高亮区域、`script`/`style`/`noscript`/`textarea` 及 `aria-hidden="true"` 的隐藏元素
 
 ### 🔧 技术实现
 ```javascript
-// 1. 页面加载前注入 CSS 阻止闪烁
-style.textContent = `html.translating { visibility: hidden !important; }`;
-document.documentElement.appendChild(style);
+// 1. 高性能数据结构(Map 哈希查找 + Set 成员检测)
+const lowerCaseTranslations = new Map();
+const statKeys = new Set(['follower', 'following', 'stars', 'watching', 'forks']);
+const skipTags = new Set(['textarea', 'script', 'style', 'noscript']);
 
 // 2. 预编译选择器字符串和正则表达式(避免每次函数调用重建)
 const codeSelectorsStr = ['pre', 'code', '.blob-code' /* ... */].join(', ');
 const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
+const plClassRegex = /(?:^|\s)pl-[a-z]/;
 
-// 3. TreeWalker 高效遍历 DOM 树
-const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, null);
+// 3. TreeWalker + NodeFilter 高效遍历(直接裁剪不可翻译子树)
+const filter = function (node) {
+    if (node.nodeType === Node.ELEMENT_NODE) {
+        if (skipTags.has(node.tagName.toLowerCase())) {
+            return NodeFilter.FILTER_REJECT; // 跳过整个子树
+        }
+    }
+    return NodeFilter.FILTER_ACCEPT;
+};
+const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, filter);
 
-// 4. MutationObserver + requestAnimationFrame 异步批处理
+// 4. MutationObserver + requestAnimationFrame + Set 去重批处理
 const observer = new MutationObserver(mutations => {
     pendingMutations.push(...mutations);
     if (!rafScheduled) {
@@ -72,6 +80,7 @@ const observer = new MutationObserver(mutations => {
         requestAnimationFrame(processPendingMutations);
     }
 });
+// processPendingMutations 内部使用 Set 确保同一节点每帧只处理一次
 ```
 
 ## 📝 翻译词条
@@ -107,7 +116,7 @@ const translations = {
 A: 可能是该文本不在翻译映射表中，你可以手动添加到 `translations` 对象。
 
 **Q: 页面加载时会闪一下吗？**  
-A: 不会。脚本使用了防闪烁机制，页面会在翻译完成后才显示。
+A: 几乎不会。得益于 TreeWalker 子树裁剪和 Map 哈希查找等深度优化，翻译在毫秒级内完成，无需隐藏页面即可实现无感切换。
 
 **Q: 会影响页面加载速度吗？**  
 A: 基本不会。脚本利用 `TreeWalker API` 在底层高效遍历，并通过 `requestAnimationFrame` 将动态渲染时的海量 DOM
@@ -125,10 +134,14 @@ A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
 
 1. **提前执行**：不等待 DOMContentLoaded，只要 body 存在就开始翻译
 2. **批处理节流**：使用 `requestAnimationFrame` 将 `MutationObserver` 高频触发的 DOM 更新合并到一帧中集中处理
-3. **预编译常量**：正则表达式、选择器字符串等提升为模块级常量，避免在高频函数中重复创建
-4. **高效遍历**：使用 TreeWalker API 而非递归，性能更优
-5. **智能跳过**：自动跳过代码块、编辑器、语法高亮等区域，避免无效翻译
-6. **SPA 支持**：延迟翻译机制确保 React/Vue 等框架动态渲染的内容也能被翻译
+3. **Set 去重**：`processPendingMutations` 内使用 `Set` 确保同一节点在每帧内只处理一次，消除高频交互时的重复翻译
+4. **预编译常量**：正则表达式、选择器字符串、属性名数组、标签跳过集合等全部提升为模块级常量，避免高频函数中反复创建临时对象
+5. **高性能数据结构**：翻译字典使用 `Map`（O(1) 哈希查找），统计关键词和跳过标签使用 `Set`（O(1) 成员检测）
+6. **TreeWalker + NodeFilter 子树裁剪**：使用 `FILTER_REJECT` 直接跳过 `script`/`style`/代码块等整个子树，避免遍历成千上万个无用节点
+7. **常量提升**：域名判断（`isGitHub`）等运行时不变量只计算一次，避免逐节点重复字符串匹配
+8. **智能跳过**：自动跳过代码块、编辑器、语法高亮等区域，GitHub 场景下使用 `closest` 预过滤 + 正则精确匹配的两级策略
+9. **变更值校验**：DOM 写入前对比新旧值，仅在实际变化时才触发修改，防止与框架的无限循环冲突
+10. **SPA 支持**：延迟翻译机制确保 React/Vue 等框架动态渲染的内容也能被翻译
 
 ## 🤝 贡献指南
 欢迎提交 Issue 和 Pull Request！

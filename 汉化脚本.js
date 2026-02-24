@@ -20,13 +20,13 @@
 // @homepageURL  https://github.com/tianxing-ovo/Tampermonkey
 // @supportURL   https://github.com/tianxing-ovo/Tampermonkey/issues
 // ==/UserScript==
-// noinspection JSNonASCIINames
-/* global GM_getResourceText */
+
 
 (function () {
     'use strict';
 
     // 翻译映射表(英文->中文)从外部资源加载
+    // noinspection JSUnresolvedReference
     const translations = JSON.parse(GM_getResourceText('translations'));
 
     const statKeys = new Set(['follower', 'following', 'stars', 'watching', 'forks']);

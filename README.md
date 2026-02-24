@@ -93,27 +93,30 @@ const observer = new MutationObserver(mutations => {
 - 更多...
 
 ## 🔧 自定义翻译
-如需添加新的翻译词条，编辑脚本中的 `translations` 对象：
 
-```javascript
-const translations = {
+翻译映射表已被提取到独立的 `translations.json` 文件中，并通过 `@resource` 机制进行加载。
+如需添加或修改翻译词条，可以在 [translations.json](translations.json) 文件中进行编辑：
+
+```json
+{
     "English Text": "中文翻译",
-    "Another Text": "另一个翻译",
-    // 添加你的翻译...
-};
+    "Another Text": "另一个翻译"
+}
 ```
+
+脚本会自动拉取最新的 `translations.json` 配置并在 `document-start` 阶段加载生效。
 
 ## 📊 版本信息
 
 - **当前版本**：1.3
 - **运行时机**：document-start（页面开始加载时）
-- **权限要求**：none（无需特殊权限）
+- **权限要求**：GM_getResourceText（读取外部资源）
 - **许可证**：Apache-2.0
 
 ## 🐛 常见问题
 
 **Q: 为什么有些文本没有被翻译？**  
-A: 可能是该文本不在翻译映射表中，你可以手动添加到 `translations` 对象。
+A: 可能是该文本不在翻译映射表中，你可以通过编辑 `translations.json` 文件进行补充。
 
 **Q: 页面加载时会闪一下吗？**  
 A: 几乎不会。得益于 TreeWalker 子树裁剪和 Map 哈希查找等深度优化，翻译在毫秒级内完成，无需隐藏页面即可实现无感切换。

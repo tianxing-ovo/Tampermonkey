@@ -56,7 +56,8 @@
         codeSelectors.push('.notranslate');
     }
     const codeSelectorsStr = codeSelectors.join(', ');
-    const skipTags = new Set(['textarea', 'script', 'style', 'noscript']);
+    const textSkipTags = new Set(['textarea', 'script', 'style', 'noscript']);
+    const walkerSkipTags = new Set(['script', 'style', 'noscript']);
     const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
     const inputAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title', 'value'];
     const obsAttributes = ['placeholder', 'aria-label', 'title', 'mattooltip'];
@@ -207,7 +208,7 @@
         // 翻译文本节点
         if (node.nodeType === Node.TEXT_NODE) {
             // 检查父元素是否应该被跳过(包含script/style/textarea等)
-            if (node.parentElement && skipTags.has(node.parentElement.tagName.toLowerCase())) {
+            if (node.parentElement && textSkipTags.has(node.parentElement.tagName.toLowerCase())) {
                 return;
             }
             // 检查父元素是否应该跳过翻译
@@ -272,7 +273,7 @@
         // 创建TreeWalker时使用的过滤函数
         const filter = function (node) {
             if (node.nodeType === Node.ELEMENT_NODE) {
-                if (skipTags.has(node.tagName.toLowerCase())) {
+                if (walkerSkipTags.has(node.tagName.toLowerCase())) {
                     return NodeFilter.FILTER_REJECT;
                 }
                 if (node.matches && node.matches(codeSelectorsStr)) {

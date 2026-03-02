@@ -12,7 +12,7 @@
 // @match        https://stackoverflow.com/*
 // @match        https://huggingface.co/*
 // @match        https://github.com/*
-// @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
+// @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json?v=2
 // @grant        GM_getResourceText
 // @run-at       document-start
 // @license      Apache-2.0

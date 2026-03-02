@@ -231,9 +231,15 @@
                         }
                     } else {
                         // 保留原始文本的前后空白
-                        const leadingSpace = text.slice(0, text.indexOf(trimmedText));
-                        const trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
-                        newValue = leadingSpace + lowerCaseTranslations.get(lowerTrimmed) + trailingSpace;
+                        let leadingSpace = text.slice(0, text.indexOf(trimmedText));
+                        let trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
+                        const translated = lowerCaseTranslations.get(lowerTrimmed);
+                        // 如果翻译为中文(去除多余的普通空格并保留换行符)
+                        if (/[\u4e00-\u9fa5]/.test(translated)) {
+                            leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
+                            trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
+                        }
+                        newValue = leadingSpace + translated + trailingSpace;
                     }
                 } else {
                     // 尝试翻译相对时间

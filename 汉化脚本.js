@@ -82,6 +82,10 @@
         }
         // GitHub特殊处理
         if (isGitHub) {
+            // 跳过README内容
+            if (element.closest('article.markdown-body')) {
+                return true;
+            }
             // 跳过搜索框构建器输入内容和代码文件/文件夹名称
             if (element.closest('.QueryBuilder-StyledInputContent, .react-directory-filename-cell')) {
                 return true;
@@ -288,7 +292,7 @@
                     return NodeFilter.FILTER_REJECT;
                 }
                 if (isGitHub) {
-                    if (node.matches && node.matches('.QueryBuilder-StyledInputContent, .react-directory-filename-cell')) {
+                    if (node.matches && node.matches('article.markdown-body, .QueryBuilder-StyledInputContent, .react-directory-filename-cell')) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     if (node.matches && node.matches('.ActionListItem-label') && node.closest('.QueryBuilder-ListItem')) {

@@ -2,7 +2,7 @@
 // @name         汉化脚本
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
-// @version      1.5
+// @version      1.6
 // @author       tianxing
 // @match        https://aistudio.google.com/*
 // @match        https://yupp.ai/*
@@ -58,6 +58,20 @@
         codeSelectors.push('.notranslate');
     }
     const codeSelectorsStr = codeSelectors.join(', ');
+
+    // GitHub专用屏蔽选择器(README、搜索构建器、路径导航面包屑、分支名、提交记录等)
+    const githubSkipSelectors = [
+        'article.markdown-body',
+        '.QueryBuilder-StyledInputContent',
+        '.react-directory-filename-cell',
+        '[data-testid="breadcrumbs"]',
+        '[data-testid="breadcrumbs-filename"]',
+        '.js-path-segment',
+        '.css-truncate-target',
+        '.react-directory-commit-message'
+    ];
+    const githubSkipSelectorsStr = githubSkipSelectors.join(', ');
+    
     const textSkipTags = new Set(['textarea', 'script', 'style', 'noscript']);
     const walkerSkipTags = new Set(['script', 'style', 'noscript']);
     const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
@@ -82,12 +96,8 @@
         }
         // GitHub特殊处理
         if (isGitHub) {
-            // 跳过README内容
-            if (element.closest('article.markdown-body')) {
-                return true;
-            }
-            // 跳过搜索框构建器输入内容和代码文件/文件夹名称
-            if (element.closest('.QueryBuilder-StyledInputContent, .react-directory-filename-cell')) {
+            // 跳过不需要翻译的内容
+            if (element.closest(githubSkipSelectorsStr)) {
                 return true;
             }
             // 跳过搜索框构建器结果列表中的建议文本(保留描述文本翻译)
@@ -292,7 +302,7 @@
                     return NodeFilter.FILTER_REJECT;
                 }
                 if (isGitHub) {
-                    if (node.matches && node.matches('article.markdown-body, .QueryBuilder-StyledInputContent, .react-directory-filename-cell')) {
+                    if (node.matches && node.matches(githubSkipSelectorsStr)) {
                         return NodeFilter.FILTER_REJECT;
                     }
                     if (node.matches && node.matches('.ActionListItem-label') && node.closest('.QueryBuilder-ListItem')) {

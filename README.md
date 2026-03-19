@@ -3,6 +3,8 @@
 ## 📖 项目介绍
 这是一个基于 Tampermonkey 的用户脚本，主要功能是将多个英文 AI 平台和开发工具网站的界面翻译成中文，帮助中文用户更流畅地使用这些工具。
 
+项目主体逻辑位于 `汉化脚本.js`，翻译词典位于 `translations.json`，并通过 `@resource` 机制在脚本启动时加载。
+
 ## 🌐 支持的网站
 - **Google AI Studio** - `https://aistudio.google.com/*`
 - **Yupp AI** - `https://yupp.ai/*`
@@ -39,15 +41,20 @@
 - **预编译优化**：正则表达式、选择器字符串、属性名数组、标签集合等全部提升为模块级常量
 - **高性能数据结构**：翻译字典使用 `Map`（O(1) 哈希查找），统计关键词使用 `Set`（O(1) 成员检测）
 - **常量提升**：域名判断 `isGitHub` 等运行时不变量只计算一次，避免高频字符串匹配
+- **局部导航回补**：监听页面生命周期以及 GitHub 的 Turbo/PJAX 事件，减少单页导航后的漏翻
 
 ### 🧠 智能翻译机制
 - **文本节点翻译**：自动识别并翻译页面上的所有文本内容
-- **属性翻译**：翻译 `aria-label`、`placeholder`、`title`、`mattooltip` 等属性
+- **属性翻译**：翻译 `aria-label`、`placeholder`、`title`、`mattooltip` 等属性，并仅对按钮类 `input` 翻译 `value`
 - **属性变化监听**：实时监听属性变化，解决 Angular/React 等框架重新渲染后翻译丢失的问题
-- **动态内容支持**：使用 MutationObserver 监听 DOM 变化，实时翻译新加载的内容
+- **动态内容支持**：使用 MutationObserver 监听 DOM 变化，实时翻译新加载的内容，并补偿慢加载内容
+- **规范化查词**：查词前统一大小写、压缩空白并移除零宽字符，提升命中率
+- **模式翻译**：除静态词典外，额外支持相对时间和统计信息等文本模式
 - **变更值校验**：翻译前对比新旧值，仅在内容实际变化时才修改 DOM，防止与框架产生无限循环
 - **增量更新**：只翻译新增节点，避免重复处理
-- **智能跳过**：自动跳过代码块、编辑器、语法高亮区域、`script`/`style`/`noscript`/`textarea` 及 `aria-hidden="true"` 的隐藏元素
+- **Shadow DOM 支持**：自动处理组件内部的 Shadow Root，并为其建立独立监听
+- **智能跳过**：自动跳过代码块、编辑器、语法高亮区域、`script`/`style`/`noscript`/`textarea`；GitHub 场景还会额外跳过
+  README/Markdown 正文、路径面包屑、文件名、搜索构建器与提交信息等结构化内容
 
 ### 🔧 技术实现
 ```javascript
@@ -60,8 +67,15 @@ const skipTags = new Set(['textarea', 'script', 'style', 'noscript']);
 const codeSelectorsStr = ['pre', 'code', '.blob-code' /* ... */].join(', ');
 const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
 const plClassRegex = /(?:^|\s)pl-[a-z]/;
+const zeroWidthRegex = /[\u200B-\u200D\uFEFF]/g;
+const whitespaceRegex = /\s+/g;
 
-// 3. TreeWalker + NodeFilter 高效遍历(直接裁剪不可翻译子树)
+// 3. 规范化查词(统一空白/大小写/零宽字符)
+function normalizeLookupText(text) {
+    return text.replace(zeroWidthRegex, '').replace(whitespaceRegex, ' ').trim().toLowerCase();
+}
+
+// 4. TreeWalker + NodeFilter 高效遍历(直接裁剪不可翻译子树)
 const filter = function (node) {
     if (node.nodeType === Node.ELEMENT_NODE) {
         if (skipTags.has(node.tagName.toLowerCase())) {
@@ -72,7 +86,7 @@ const filter = function (node) {
 };
 const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, filter);
 
-// 4. MutationObserver + requestAnimationFrame + Set 去重批处理
+// 5. MutationObserver + requestAnimationFrame + Set 去重批处理
 const observer = new MutationObserver(mutations => {
     pendingMutations.push(...mutations);
     if (!rafScheduled) {
@@ -85,7 +99,7 @@ const observer = new MutationObserver(mutations => {
 
 ## 📝 翻译词条
 
-脚本内置了 **700+** 常用界面术语的翻译，包括：
+当前词典已包含 **900+** 常用界面短语与术语翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 竞技场相关：Arena（竞技场）、Rank（排名）、Votes（投票）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
@@ -104,11 +118,13 @@ const observer = new MutationObserver(mutations => {
 }
 ```
 
-脚本会自动拉取最新的 `translations.json` 配置并在 `document-start` 阶段加载生效。
+维护词典时建议优先补充完整界面短语，并保持英文键按字母顺序排序，减少误翻和无意义 diff。
+
+脚本会自动拉取最新的 `translations.json` 配置，并在 `document-start` 阶段加载生效。
 
 ## 📊 版本信息
 
-- **当前版本**：1.3
+- **当前版本**：1.6
 - **运行时机**：document-start（页面开始加载时）
 - **权限要求**：GM_getResourceText（读取外部资源）
 - **许可证**：Apache-2.0
@@ -116,7 +132,8 @@ const observer = new MutationObserver(mutations => {
 ## 🐛 常见问题
 
 **Q: 为什么有些文本没有被翻译？**  
-A: 可能是该文本不在翻译映射表中，你可以通过编辑 `translations.json` 文件进行补充。
+A: 可能是该文本不在翻译映射表中，或者该区域属于脚本刻意保护的结构化内容（如代码块、编辑器、GitHub
+README、路径面包屑、文件名等）。前者可以通过编辑 `translations.json` 补充，后者通常不建议直接翻译。
 
 **Q: 页面加载时会闪一下吗？**  
 A: 几乎不会。得益于 TreeWalker 子树裁剪和 Map 哈希查找等深度优化，翻译在毫秒级内完成，无需隐藏页面即可实现无感切换。
@@ -129,7 +146,7 @@ A: 基本不会。脚本利用 `TreeWalker API` 在底层高效遍历，并通�
 A: 通常都是毫秒级无缝完成。
 
 **Q: 支持其他网站吗？**  
-A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
+A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可；如果准备长期维护，也建议同步更新 README 中的支持网站列表。
 
 ## ⚙️ 性能优化
 
@@ -144,7 +161,7 @@ A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可。
 7. **常量提升**：域名判断（`isGitHub`）等运行时不变量只计算一次，避免逐节点重复字符串匹配
 8. **智能跳过**：自动跳过代码块、编辑器、语法高亮等区域，GitHub 场景下使用 `closest` 预过滤 + 正则精确匹配的两级策略
 9. **变更值校验**：DOM 写入前对比新旧值，仅在实际变化时才触发修改，防止与框架的无限循环冲突
-10. **SPA 支持**：延迟翻译机制确保 React/Vue 等框架动态渲染的内容也能被翻译
+10. **SPA / Shadow DOM 支持**：延迟翻译与 Shadow Root 监听机制确保 React/Vue 等框架动态渲染内容也能被翻译
 
 ## 🤝 贡献指南
 欢迎提交 Issue 和 Pull Request！

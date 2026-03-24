@@ -188,6 +188,7 @@
   "Context length": "上下文长度",
   "Contribution activity": "贡献活动",
   "Contribution settings": "贡献设置",
+  "Contributions per week to": "每周贡献至",
   "Contributions:": "贡献:",
   "Contributors": "贡献者",
   "Conversation": "对话",
@@ -1038,6 +1039,7 @@
   "(Upper-Lower)": "(上限-下限)",
   "(experimental)": "(实验的)",
   "(separate with spaces)": "(用空格分隔)",
+  ", excluding merge commits": "，不包括合并提交",
   "✨ Inspiration": "✨ 灵感",
   "🇺🇸 Language": "语言",
   "💬 Default": "默认"

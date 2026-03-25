@@ -3,7 +3,13 @@
 ## 📖 项目介绍
 这是一个基于 Tampermonkey 的用户脚本，主要功能是将多个英文 AI 平台和开发工具网站的界面翻译成中文，帮助中文用户更流畅地使用这些工具。
 
-项目主体逻辑位于 `汉化脚本.js`，翻译词典位于 `translations.json`，并通过 `@resource` 机制在脚本启动时加载。
+当前仓库包含：
+
+- `汉化脚本.js`：用户脚本主体，负责页面监听、文本匹配与 DOM 翻译
+- `translations.json`：独立维护的翻译词典，当前已包含 **1000+** 条界面文案
+- `translate-icon.png`：脚本图标资源
+
+项目主体逻辑位于 `汉化脚本.js`，翻译词典位于 `translations.json`，并通过 `@resource` 机制在脚本初始化时加载。
 
 ## 🌐 支持的网站
 - **Google AI Studio** - `https://aistudio.google.com/*`
@@ -17,19 +23,26 @@
 
 ## 🚀 安装方法
 
-### 方式一：直接安装
+### 方式一：推荐的一键安装
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展
-2. 点击 [汉化脚本.js](汉化脚本.js) 文件
-3. 复制全部代码
-4. 点击 Tampermonkey 图标 → "添加新脚本"
-5. 粘贴代码并保存（Ctrl+S）
-6. 访问支持的网站即可看到中文界面
+2. 打开脚本直链：  
+   [安装汉化脚本](https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/%E6%B1%89%E5%8C%96%E8%84%9A%E6%9C%AC.js)
+3. 在 Tampermonkey 弹出的安装页面中确认安装
+4. 访问支持的网站即可看到中文界面
 
 ### 方式二：从文件安装
 1. 下载 `汉化脚本.js` 文件
 2. 打开 Tampermonkey 管理面板
 3. 点击"实用工具"标签
 4. 选择文件并导入
+
+### 方式三：手动开发/调试
+
+1. 克隆或下载当前仓库
+2. 在 Tampermonkey 中新建脚本并粘贴 `汉化脚本.js` 内容
+3. 若只调试脚本逻辑，可直接保存脚本并刷新目标页面
+4. 若要联调 `translations.json`，需要同时修改脚本头部的 `@resource translations ...` 地址，使其指向你自己的可访问 JSON
+   资源，再重新安装或更新脚本
 
 ## ✨ 核心特性
 
@@ -99,7 +112,7 @@ const observer = new MutationObserver(mutations => {
 
 ## 📝 翻译词条
 
-当前词典已包含 **900+** 常用界面短语与术语翻译，包括：
+当前词典已包含 **1000+** 常用界面短语与术语翻译，包括：
 - AI 模型相关：Model（模型）、Chat（聊天）、Prompt（提示）
 - 竞技场相关：Arena（竞技场）、Rank（排名）、Votes（投票）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
@@ -120,7 +133,10 @@ const observer = new MutationObserver(mutations => {
 
 维护词典时建议优先补充完整界面短语，并保持英文键按字母顺序排序，减少误翻和无意义 diff。
 
-脚本会自动拉取最新的 `translations.json` 配置，并在 `document-start` 阶段加载生效。
+`translations.json` 会随脚本版本一起通过 `@resource` 分发。也就是说：
+
+- 在线安装用户会在 Tampermonkey 检查并更新脚本版本时同步拿到最新词典
+- 本地手动导入用户在修改词典后，需要重新导入或更新脚本才能看到最新效果
 
 ## 📊 版本信息
 

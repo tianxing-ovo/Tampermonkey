@@ -52,18 +52,9 @@
     const codeSelectorsStr = codeSelectors.join(', ');
 
     // GitHub专用屏蔽选择器(README、搜索构建器、路径导航面包屑、分支名、提交记录等)
-    const githubSkipSelectors = [
-        'article.markdown-body',
-        '.QueryBuilder-StyledInputContent',
-        '.react-directory-filename-cell',
-        '[data-testid="breadcrumbs"]',
-        '[data-testid="breadcrumbs-filename"]',
-        '.js-path-segment',
-        '.css-truncate-target',
-        '.react-directory-commit-message'
-    ];
+    const githubSkipSelectors = ['article.markdown-body', '.QueryBuilder-StyledInputContent', '.react-directory-filename-cell', '[data-testid="breadcrumbs"]', '[data-testid="breadcrumbs-filename"]', '.js-path-segment', '.css-truncate-target', '.react-directory-commit-message'];
     const githubSkipSelectorsStr = githubSkipSelectors.join(', ');
-    
+
     const textSkipTags = new Set(['textarea', 'script', 'style', 'noscript']);
     const walkerSkipTags = new Set(['script', 'style', 'noscript']);
     const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
@@ -338,11 +329,7 @@
         }
         observedRoots.add(root);
         observer.observe(root, {
-            childList: true,
-            subtree: true,
-            characterData: true,
-            attributes: true,
-            attributeFilter: obsAttributes
+            childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: obsAttributes
         });
         walkAndTranslate(root);
     }
@@ -435,14 +422,16 @@
             return;
         }
         initialized = true;
+
+        // 注入防换行样式(避免翻译后按钮因文字折行而变形)
+        const style = document.createElement('style');
+        style.textContent = 'button,[type="submit"],[type="button"],[type="reset"],[role="button"]{white-space:nowrap!important}';
+        (document.head || document.documentElement).appendChild(style);
+
         const root = document.body || document.documentElement;
         // 立即开始监听DOM变化
         observer.observe(document.documentElement, {
-            childList: true,
-            subtree: true,
-            characterData: true,
-            attributes: true,
-            attributeFilter: obsAttributes
+            childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: obsAttributes
         });
 
         // 第一次翻译

@@ -1,7 +1,8 @@
 # Tampermonkey 汉化脚本
 
 ## 📖 项目介绍
-这是一个基于 Tampermonkey 的用户脚本，主要功能是将多个英文 AI 平台和开发工具网站的界面翻译成中文，帮助中文用户更流畅地使用这些工具。
+
+这是一个基于 Tampermonkey 的用户脚本，主要功能是将网页中的英文界面文案翻译成中文，帮助中文用户更流畅地浏览和使用各类英文网站
 
 当前仓库包含：
 
@@ -9,17 +10,29 @@
 - `translations.json`：独立维护的翻译词典，当前已包含 **1000+** 条界面文案
 - `translate-icon.png`：脚本图标资源
 
-项目主体逻辑位于 `汉化脚本.js`，翻译词典位于 `translations.json`，并通过 `@resource` 机制在脚本初始化时加载。
+项目主体逻辑位于 `汉化脚本.js`，翻译词典位于 `translations.json`，并通过 `@resource` 机制在脚本初始化时加载
 
-## 🌐 支持的网站
-- **Google AI Studio** - `https://aistudio.google.com/*`
-- **Yupp AI** - `https://yupp.ai/*`
-- **LM Arena** - `https://arena.ai/*`
-- **JetBrains Plugins** - `https://plugins.jetbrains.com/*`
-- **OpenRouter AI** - `https://openrouter.ai/*`
-- **Stack Overflow** - `https://stackoverflow.com/*`
-- **Hugging Face** - `https://huggingface.co/*`
-- **GitHub** - `https://github.com/*`
+## 🌐 支持范围
+
+脚本当前默认匹配所有常见网页：
+
+- `*://*/*`
+
+也就是说，理论上绝大多数 `http` / `https` 网站都会注入脚本并尝试翻译页面中的英文界面文案
+
+### 推荐使用方式
+
+- 英文网站：默认直接使用即可
+- 中文网站或不希望翻译的网站：在 Tampermonkey 中自行添加排除规则
+- 结构复杂的网站：如有误翻，可按域名精细排除
+
+### 当前已重点适配的网站类型
+
+虽然脚本已改为默认全站可用，但目前仍针对以下站点或场景做了专门兼容：
+
+- **GitHub**：额外跳过 README、路径面包屑、文件名、搜索构建器、提交信息等结构化内容
+- **通用前端应用**：支持 React / Vue / Angular 等动态渲染页面
+- **Shadow DOM 页面**：支持组件内部内容翻译与监听
 
 ## 🚀 安装方法
 
@@ -28,7 +41,7 @@
 2. 打开脚本直链：  
    [安装汉化脚本](https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/%E6%B1%89%E5%8C%96%E8%84%9A%E6%9C%AC.js)
 3. 在 Tampermonkey 弹出的安装页面中确认安装
-4. 访问支持的网站即可看到中文界面
+4. 打开英文网站即可看到中文界面；若某些中文网站不希望生效，可在 Tampermonkey 中自行排除
 
 ### 方式二：从文件安装
 1. 下载 `汉化脚本.js` 文件
@@ -117,11 +130,11 @@ const observer = new MutationObserver(mutations => {
 - 竞技场相关：Arena（竞技场）、Rank（排名）、Votes（投票）
 - 设置选项：Settings（设置）、Temperature（温度）、Token count（令牌计数）
 - 操作按钮：Run（运行）、Save（保存）、Share（分享）
-- 更多...
+- 更多
 
 ## 🔧 自定义翻译
 
-翻译映射表已被提取到独立的 `translations.json` 文件中，并通过 `@resource` 机制进行加载。
+翻译映射表已被提取到独立的 `translations.json` 文件中，并通过 `@resource` 机制进行加载
 如需添加或修改翻译词条，可以在 [translations.json](translations.json) 文件中进行编辑：
 
 ```json
@@ -131,7 +144,7 @@ const observer = new MutationObserver(mutations => {
 }
 ```
 
-维护词典时建议优先补充完整界面短语，并保持英文键按字母顺序排序，减少误翻和无意义 diff。
+维护词典时建议优先补充完整界面短语，并保持英文键按字母顺序排序，减少误翻和无意义 diff
 
 `translations.json` 会随脚本版本一起通过 `@resource` 分发。也就是说：
 
@@ -140,7 +153,7 @@ const observer = new MutationObserver(mutations => {
 
 ## 📊 版本信息
 
-- **当前版本**：1.6
+- **当前版本**：1.7
 - **运行时机**：document-start（页面开始加载时）
 - **权限要求**：GM_getResourceText（读取外部资源）
 - **许可证**：Apache-2.0
@@ -149,20 +162,23 @@ const observer = new MutationObserver(mutations => {
 
 **Q: 为什么有些文本没有被翻译？**  
 A: 可能是该文本不在翻译映射表中，或者该区域属于脚本刻意保护的结构化内容（如代码块、编辑器、GitHub
-README、路径面包屑、文件名等）。前者可以通过编辑 `translations.json` 补充，后者通常不建议直接翻译。
+README、路径面包屑、文件名等）；前者可以通过编辑 `translations.json` 补充，后者通常不建议直接翻译
 
 **Q: 页面加载时会闪一下吗？**  
-A: 几乎不会。得益于 TreeWalker 子树裁剪和 Map 哈希查找等深度优化，翻译在毫秒级内完成，无需隐藏页面即可实现无感切换。
+A: 几乎不会，得益于 TreeWalker 子树裁剪和 Map 哈希查找等深度优化，翻译在毫秒级内完成，无需隐藏页面即可实现无感切换
 
 **Q: 会影响页面加载速度吗？**  
-A: 基本不会。脚本利用 `TreeWalker API` 在底层高效遍历，并通过 `requestAnimationFrame` 将动态渲染时的海量 DOM
-修改进行批处理与去重合并。核心代码预编译了正则，采用了纯净的字典极致查询，大大减轻了重绘压力。
+A: 基本不会，脚本利用 `TreeWalker API` 在底层高效遍历，并通过 `requestAnimationFrame` 将动态渲染时的海量 DOM
+修改进行批处理与去重合并；核心代码预编译了正则，采用了纯净的字典极致查询，大大减轻了重绘压力
 
 **Q: 翻译需要多久完成？**  
-A: 通常都是毫秒级无缝完成。
+A: 通常都是毫秒级无缝完成
 
-**Q: 支持其他网站吗？**  
-A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可；如果准备长期维护，也建议同步更新 README 中的支持网站列表。
+**Q: 现在支持哪些网站？**  
+A: 当前脚本默认匹配 `*://*/*`，会在绝大多数网页上生效，不再需要手动维护站点白名单
+
+**Q: 中文网站也会被匹配，怎么办？**  
+A: 可以直接在 Tampermonkey 中为不希望翻译的域名添加排除规则，推荐把常用中文站、后台系统、支付页面、邮箱等站点加入排除列表
 
 ## ⚙️ 性能优化
 
@@ -180,12 +196,13 @@ A: 可以。在脚本头部的 `@match` 部分添加新的网站 URL 即可；�
 10. **SPA / Shadow DOM 支持**：延迟翻译与 Shadow Root 监听机制确保 React/Vue 等框架动态渲染内容也能被翻译
 
 ## 🤝 贡献指南
-欢迎提交 Issue 和 Pull Request！
+
+欢迎提交 Issue 和 Pull Request
 
 - 发现翻译错误或不准确
 - 建议添加新的网站支持
 - 优化代码性能
-- 添加新的翻译词条
+- 补充翻译词条
 
 ## 📄 许可证
 

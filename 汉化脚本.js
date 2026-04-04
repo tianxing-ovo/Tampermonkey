@@ -2,16 +2,9 @@
 // @name         汉化脚本
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
-// @version      1.6
+// @version      1.7
 // @author       tianxing
-// @match        https://aistudio.google.com/*
-// @match        https://yupp.ai/*
-// @match        https://arena.ai/*
-// @match        https://plugins.jetbrains.com/*
-// @match        https://openrouter.ai/*
-// @match        https://stackoverflow.com/*
-// @match        https://huggingface.co/*
-// @match        https://github.com/*
+// @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
 // @grant        GM_getResourceText
 // @run-at       document-start
@@ -30,7 +23,6 @@
     // 翻译映射表(英文->中文)从外部资源加载
     // noinspection JSUnresolvedReference
     const translations = JSON.parse(GM_getResourceText('translations'));
-
     const statKeys = new Set(['follower', 'following', 'stars', 'watching', 'forks']);
     const isGitHub = location.hostname.includes('github.com');
     const whitespaceRegex = /\s+/g;

@@ -23,7 +23,6 @@
     // 翻译映射表(英文->中文)从外部资源加载
     // noinspection JSUnresolvedReference
     const translations = JSON.parse(GM_getResourceText('translations'));
-    const statKeys = new Set(['follower', 'following', 'stars', 'watching', 'forks']);
     const isGitHub = location.hostname.includes('github.com');
     const whitespaceRegex = /\s+/g;
     const zeroWidthRegex = /[\u200B-\u200D\uFEFF]/g;
@@ -54,11 +53,15 @@
     // GitHub专用屏蔽选择器(README、搜索构建器、路径导航面包屑、分支名、提交记录等)
     const githubSkipSelectors = ['article.markdown-body', '.QueryBuilder-StyledInputContent', '.react-directory-filename-cell', '[data-testid="breadcrumbs"]', '[data-testid="breadcrumbs-filename"]', '.js-path-segment', '.css-truncate-target', '.react-directory-commit-message'];
     const githubSkipSelectorsStr = githubSkipSelectors.join(', ');
-
+    // 文本节点翻译时屏蔽的父标签(保护内部代码/样式/文本编辑框不被错误翻译和破坏)
     const textSkipTags = new Set(['textarea', 'script', 'style', 'noscript']);
+    // TreeWalker遍历时直接跳过且不再深入的元素节点(提高DOM树遍历性能)
     const walkerSkipTags = new Set(['script', 'style', 'noscript']);
+    // 需要常规翻译的DOM元素属性白名单
     const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
+    // 仅针对按钮类input元素扩充的需要翻译的属性白名单(包含value)
     const inputAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title', 'value'];
+    // MutationObserver监听动态变化时关注的属性列表
     const obsAttributes = ['placeholder', 'aria-label', 'title', 'mattooltip'];
 
     /**
@@ -110,12 +113,16 @@
     }
 
     // 预编译正则表达式和映射表(避免每次函数调用重建)
+    // 匹配相对时间(例如: "2 months ago")
     const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
+    // 时间单位映射
     const unitMap = {
         'year': '年', 'month': '个月', 'week': '周', 'day': '天', 'hour': '小时', 'minute': '分钟', 'second': '秒'
     };
-    const statRegex = /^(\s*)(\+\s*)?(\d+(?:\.\d+)?[km]?\+?)?(\s*)([a-zA-Z]+)(\s*)$/i;
+    // GitHub语法高亮类名(避开 pl-1, pl-2 等布局类)
     const plClassRegex = /(?:^|\s)pl-[a-z]/;
+    // 匹配文本首尾的非字母部分(数字/符号/空白等)
+    const symbolStripRegex = /^([^a-zA-Z]*)(.*[a-zA-Z])([^a-zA-Z]*)$/;
 
     /**
      * 翻译相对时间字符串(例如: "2 months ago")
@@ -135,26 +142,20 @@
     }
 
     /**
-     * 翻译统计信息(例如: "5 stars")
-     * 支持包含数字和空格的模式
+     * 剥离文本首尾的非字母部分(数字/符号/空白)后查字典
+     *
      * @param text 要翻译的文本
      */
-    function translateStat(text) {
+    function translateStripped(text) {
         const normalized = text.replace(zeroWidthRegex, '');
-        // 模式: 可选空白 + 可选(+) + 可选数字 + 可选空白 + 单词(必须在翻译表中) + 可选空白
-        const match = normalized.match(statRegex);
+        const match = normalized.match(symbolStripRegex);
         if (match) {
-            const prefixSpace = match[1];
-            const plusPart = match[2] || '';
-            const number = match[3] || '';
-            const middleSpace = match[4];
-            const word = match[5];
-            const suffixSpace = match[6];
-            // 尝试查找单词的翻译
-            const lowerWord = word.toLowerCase();
-            if (lowerCaseTranslations.has(lowerWord)) {
-                const translatedWord = lowerCaseTranslations.get(lowerWord);
-                return `${prefixSpace}${plusPart}${number}${middleSpace}${translatedWord}${suffixSpace}`;
+            const prefix = match[1];
+            const core = match[2].trim();
+            const suffix = match[3];
+            const lowerCore = core.toLowerCase();
+            if (lowerCaseTranslations.has(lowerCore)) {
+                return prefix + lowerCaseTranslations.get(lowerCore) + suffix;
             }
         }
         return null;
@@ -191,10 +192,10 @@
                         if (translatedTime) {
                             newValue = translatedTime;
                         } else {
-                            // 尝试翻译统计信息
-                            const translatedStat = translateStat(value);
-                            if (translatedStat) {
-                                newValue = translatedStat;
+                            // 尝试剥离非字母部分后再匹配(统计信息/符号等)
+                            const translatedStripped = translateStripped(value);
+                            if (translatedStripped) {
+                                newValue = translatedStripped;
                             }
                         }
                     }
@@ -221,35 +222,32 @@
                 let newValue = null;
                 // 检查是否直接在翻译表中
                 if (lowerCaseTranslations.has(lowerTrimmed)) {
-                    // 检查是否为统计单词
-                    if (statKeys.has(lowerTrimmed)) {
-                        // 尝试翻译统计信息
-                        const translatedStat = translateStat(text);
-                        if (translatedStat) {
-                            newValue = translatedStat;
-                        }
-                    } else {
-                        // 保留原始文本的前后空白
-                        let leadingSpace = text.slice(0, text.indexOf(trimmedText));
-                        let trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
-                        const translated = lowerCaseTranslations.get(lowerTrimmed);
-                        // 如果翻译为中文(去除多余的普通空格并保留换行符)
-                        if (/[\u4e00-\u9fa5]/.test(translated)) {
-                            leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
-                            trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
-                        }
-                        newValue = leadingSpace + translated + trailingSpace;
+                    // 普通翻译(保留原始文本的前后空白)
+                    let leadingSpace = text.slice(0, text.indexOf(trimmedText));
+                    let trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
+                    const translated = lowerCaseTranslations.get(lowerTrimmed);
+                    // 如果翻译为中文(去除多余的普通空格并保留换行符)
+                    if (/[\u4e00-\u9fa5]/.test(translated)) {
+                        leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
+                        trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
                     }
+                    newValue = leadingSpace + translated + trailingSpace;
                 } else {
                     // 尝试翻译相对时间
                     const translatedTime = translateRelativeTime(text);
                     if (translatedTime) {
                         newValue = translatedTime;
                     } else {
-                        // 尝试翻译统计信息
-                        const translatedStat = translateStat(text);
-                        if (translatedStat) {
-                            newValue = translatedStat;
+                        // 尝试剥离非字母部分后再匹配(统计信息/符号等)
+                        const translatedStripped = translateStripped(trimmedText);
+                        if (translatedStripped) {
+                            let leadingSpace = text.slice(0, text.indexOf(trimmedText));
+                            let trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
+                            if (/[\u4e00-\u9fa5]/.test(translatedStripped)) {
+                                leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
+                                trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
+                            }
+                            newValue = leadingSpace + translatedStripped + trailingSpace;
                         }
                     }
                 }
@@ -263,6 +261,7 @@
 
     /**
      * 遍历指定根节点下的所有节点并应用翻译
+     *
      * @param rootNode 开始遍历的根节点
      */
     function walkAndTranslate(rootNode) {

@@ -66,6 +66,7 @@
 
     /**
      * 检查元素是否应该跳过翻译
+     * 
      * @param element 要检查的元素
      */
     function shouldSkipElement(element) {
@@ -107,6 +108,10 @@
             }
             // GitHub不跳过aria-hidden=true的元素
             return false;
+        }
+        // 跳过包含icon类名的元素(例如material-icons等ligature图标)
+        if (element.className && typeof element.className === 'string' && (element.className.includes('icon') || element.className.includes('material-symbols'))) {
+            return true;
         }
         // 跳过aria-hidden=true的元素
         return element.getAttribute('aria-hidden') === 'true';
@@ -297,6 +302,9 @@
                     if (node.getAttribute('aria-hidden') === 'true') {
                         return NodeFilter.FILTER_REJECT;
                     }
+                }
+                if (node.className && typeof node.className === 'string' && (node.className.includes('icon') || node.className.includes('material-symbols'))) {
+                    return NodeFilter.FILTER_REJECT;
                 }
             }
             return NodeFilter.FILTER_ACCEPT;

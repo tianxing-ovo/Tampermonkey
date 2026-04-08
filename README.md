@@ -7,7 +7,7 @@
 当前仓库包含：
 
 - `汉化脚本.js`：用户脚本主体，负责页面监听、文本匹配与 DOM 翻译
-- `translations.json`：独立维护的翻译词典，当前已包含 **1000+** 条界面文案
+- `translations.json`：独立维护的翻译词典，当前已包含 **1455** 条界面文案
 - `translate-icon.png`：脚本图标资源
 
 项目主体逻辑位于 `汉化脚本.js`，翻译词典位于 `translations.json`，并通过 `@resource` 机制在脚本初始化时加载
@@ -156,10 +156,16 @@ const observer = new MutationObserver(mutations => {
 
 ## 📊 版本信息
 
-- **当前版本**：1.7
+- **当前版本**：1.8
 - **运行时机**：document-start（页面开始加载时）
 - **权限要求**：GM_getResourceText（读取外部资源）
 - **许可证**：Apache-2.0
+
+### 1.8 更新内容
+
+- 补充多条常用界面翻译词条，例如 `Improvements`、`Fixes`、`Monthly`、`Annually`、`Terminal`、`View docs`
+- 优化图标元素跳过逻辑，新增对包含 `icon` 和 `material-symbols` 类名元素的过滤，减少误翻图标字体的情况
+- 同步更新脚本文档中的版本与词典信息，便于安装用户识别最新发布内容
 
 ## 🐛 常见问题
 

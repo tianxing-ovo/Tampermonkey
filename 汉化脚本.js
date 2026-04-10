@@ -110,7 +110,7 @@
             return false;
         }
         // 跳过包含icon类名的元素(例如material-icons等ligature图标)
-        if (element.className && typeof element.className === 'string' && (element.className.includes('icon') || element.className.includes('material-symbols'))) {
+        if (element.className && typeof element.className === 'string' && /(?:^|\s|-)(?:icon|material-icons|material-symbols)(?:$|\s|-)/i.test(element.className)) {
             return true;
         }
         // 跳过aria-hidden=true的元素
@@ -303,7 +303,7 @@
                         return NodeFilter.FILTER_REJECT;
                     }
                 }
-                if (node.className && typeof node.className === 'string' && (node.className.includes('icon') || node.className.includes('material-symbols'))) {
+                if (node.className && typeof node.className === 'string' && /(?:^|\s|-)(?:icon|material-icons|material-symbols)(?:$|\s|-)/i.test(node.className)) {
                     return NodeFilter.FILTER_REJECT;
                 }
             }

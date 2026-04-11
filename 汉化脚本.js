@@ -110,7 +110,7 @@
             return false;
         }
         // 跳过包含icon类名的元素(例如material-icons等ligature图标)
-        if (element.className && typeof element.className === 'string' && /(?:^|\s|-)(?:icon|material-icons|material-symbols)(?:$|\s|-)/i.test(element.className)) {
+        if (element.className && typeof element.className === 'string' && /(?:^|\s)(?:icon|dropdown-icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i.test(element.className)) {
             return true;
         }
         // 跳过aria-hidden=true的元素
@@ -303,7 +303,7 @@
                         return NodeFilter.FILTER_REJECT;
                     }
                 }
-                if (node.className && typeof node.className === 'string' && /(?:^|\s|-)(?:icon|material-icons|material-symbols)(?:$|\s|-)/i.test(node.className)) {
+                if (node.className && typeof node.className === 'string' && /(?:^|\s)(?:icon|dropdown-icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i.test(node.className)) {
                     return NodeFilter.FILTER_REJECT;
                 }
             }

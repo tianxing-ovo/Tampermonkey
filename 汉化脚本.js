@@ -2,7 +2,7 @@
 // @name         汉化脚本
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
-// @version      1.8
+// @version      1.9
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -64,17 +64,30 @@
     // MutationObserver监听动态变化时关注的属性列表
     const obsAttributes = ['placeholder', 'aria-label', 'title', 'mattooltip'];
 
+    // 预编译正则表达式和映射表(避免每次函数调用重建)
+    // 匹配相对时间(例如: "2 months ago")
+    const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
+    // 时间单位映射
+    const unitMap = {
+        'year': '年', 'month': '个月', 'week': '周', 'day': '天', 'hour': '小时', 'minute': '分钟', 'second': '秒'
+    };
+    // GitHub语法高亮类名(避开 pl-1, pl-2 等布局类)
+    const plClassRegex = /(?:^|\s)pl-[a-z]/;
+    // 匹配文本首尾的非字母部分(数字/符号/空白等)
+    const symbolStripRegex = /^([^a-zA-Z]*)(.*[a-zA-Z])([^a-zA-Z]*)$/;
+    // 匹配图标类名
+    const iconClassRegex = /(?:^|\s)(?:icon|dropdown-icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i;
+    // 匹配中文字符(用于判断翻译结果是否为中文)
+    const chineseRegex = /[\u4e00-\u9fa5]/;
+
     /**
      * 检查元素是否应该跳过翻译
-     * 
+     *
      * @param element 要检查的元素
      */
     function shouldSkipElement(element) {
-        if (!element) {
-            return false;
-        }
-        // 确保element具有closest方法(有些特殊的Node类型可能没有)
-        if (!element.closest) {
+        // 检查元素是否存在且有closest方法(避免空指针异常)
+        if (!element || !element.closest) {
             return false;
         }
         // 跳过代码区域(textarea / pre / code / GitHub特有的代码视图类 / 其他常用编辑器)
@@ -97,11 +110,8 @@
                 let current = element;
                 // 遍历所有祖先元素(包括当前元素)
                 while (current && current !== document.body) {
-                    if (typeof current.className === 'string') {
-                        // 检查是否有以 pl- 开头的语法高亮类名(避开 pl-1, pl-2 等布局类)
-                        if (plClassRegex.test(current.className)) {
-                            return true;
-                        }
+                    if (typeof current.className === 'string' && plClassRegex.test(current.className)) {
+                        return true;
                     }
                     current = current.parentElement;
                 }
@@ -110,38 +120,23 @@
             return false;
         }
         // 跳过包含icon类名的元素(例如material-icons等ligature图标)
-        if (element.className && typeof element.className === 'string' && /(?:^|\s)(?:icon|dropdown-icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i.test(element.className)) {
+        if (element.className && typeof element.className === 'string' && iconClassRegex.test(element.className)) {
             return true;
         }
         // 跳过aria-hidden=true的元素
         return element.getAttribute('aria-hidden') === 'true';
     }
 
-    // 预编译正则表达式和映射表(避免每次函数调用重建)
-    // 匹配相对时间(例如: "2 months ago")
-    const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/i;
-    // 时间单位映射
-    const unitMap = {
-        'year': '年', 'month': '个月', 'week': '周', 'day': '天', 'hour': '小时', 'minute': '分钟', 'second': '秒'
-    };
-    // GitHub语法高亮类名(避开 pl-1, pl-2 等布局类)
-    const plClassRegex = /(?:^|\s)pl-[a-z]/;
-    // 匹配文本首尾的非字母部分(数字/符号/空白等)
-    const symbolStripRegex = /^([^a-zA-Z]*)(.*[a-zA-Z])([^a-zA-Z]*)$/;
-
     /**
      * 翻译相对时间字符串(例如: "2 months ago")
+     *
      * @param text 要翻译的文本
      */
     function translateRelativeTime(text) {
         const normalized = text.replace(zeroWidthRegex, '').replace(whitespaceRegex, ' ').trim();
         const match = normalized.match(timeRegex);
         if (match) {
-            // 提取数字部分
-            const num = match[1];
-            // 提取单位部分并转换为小写
-            const unit = match[2].toLowerCase();
-            return `${num} ${unitMap[unit]}前`;
+            return `${match[1]} ${unitMap[match[2].toLowerCase()]}前`;
         }
         return null;
     }
@@ -155,19 +150,31 @@
         const normalized = text.replace(zeroWidthRegex, '');
         const match = normalized.match(symbolStripRegex);
         if (match) {
-            const prefix = match[1];
-            const core = match[2].trim();
-            const suffix = match[3];
-            const lowerCore = core.toLowerCase();
+            const lowerCore = match[2].trim().toLowerCase();
             if (lowerCaseTranslations.has(lowerCore)) {
-                return prefix + lowerCaseTranslations.get(lowerCore) + suffix;
+                return match[1] + lowerCaseTranslations.get(lowerCore) + match[3];
             }
         }
         return null;
     }
 
     /**
+     * 通用翻译逻辑: 查字典 → 翻译时间 → 剥离符号后查字典
+     *
+     * @param {string} normalizedText 已规范化的文本
+     * @param {string} originalText 原始文本
+     * @returns {string | null} 翻译结果或null
+     */
+    function lookupText(normalizedText, originalText) {
+        if (lowerCaseTranslations.has(normalizedText)) {
+            return lowerCaseTranslations.get(normalizedText);
+        }
+        return translateRelativeTime(originalText) || translateStripped(originalText);
+    }
+
+    /**
      * 翻译单个节点的文本或属性
+     *
      * @param node 要翻译的节点
      * @param isSafe 标记该节点已经过验证(无需再调用shouldSkipElement)
      */
@@ -178,32 +185,11 @@
             if (!isSafe && shouldSkipElement(node)) {
                 return;
             }
-            let attributes = standardAttributes;
-            // value属性仅翻译按钮类input(避免修改表单提交数据)
-            if (node.tagName === 'INPUT' && (node.type === 'button' || node.type === 'submit' || node.type === 'reset')) {
-                attributes = inputAttributes;
-            }
+            let attributes = node.tagName === 'INPUT' && (node.type === 'button' || node.type === 'submit' || node.type === 'reset') ? inputAttributes : standardAttributes;
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
                 if (value) {
-                    const lowerValue = normalizeLookupText(value);
-                    // 检查是否直接在翻译表中
-                    let newValue = null;
-                    if (lowerCaseTranslations.has(lowerValue)) {
-                        newValue = lowerCaseTranslations.get(lowerValue);
-                    } else {
-                        // 尝试翻译相对时间
-                        const translatedTime = translateRelativeTime(value);
-                        if (translatedTime) {
-                            newValue = translatedTime;
-                        } else {
-                            // 尝试剥离非字母部分后再匹配(统计信息/符号等)
-                            const translatedStripped = translateStripped(value);
-                            if (translatedStripped) {
-                                newValue = translatedStripped;
-                            }
-                        }
-                    }
+                    const newValue = lookupText(normalizeLookupText(value), value);
                     if (newValue && newValue !== value) {
                         node.setAttribute(attr, newValue);
                     }
@@ -222,47 +208,55 @@
             }
             const text = node.nodeValue;
             const trimmedText = text.trim();
-            if (trimmedText) {
-                const lowerTrimmed = normalizeLookupText(trimmedText);
-                let newValue = null;
-                // 检查是否直接在翻译表中
-                if (lowerCaseTranslations.has(lowerTrimmed)) {
-                    // 普通翻译(保留原始文本的前后空白)
-                    let leadingSpace = text.slice(0, text.indexOf(trimmedText));
-                    let trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
-                    const translated = lowerCaseTranslations.get(lowerTrimmed);
-                    // 如果翻译为中文(去除多余的普通空格并保留换行符)
-                    if (/[\u4e00-\u9fa5]/.test(translated)) {
-                        leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
-                        trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
-                    }
-                    newValue = leadingSpace + translated + trailingSpace;
-                } else {
-                    // 尝试翻译相对时间
-                    const translatedTime = translateRelativeTime(text);
-                    if (translatedTime) {
-                        newValue = translatedTime;
-                    } else {
-                        // 尝试剥离非字母部分后再匹配(统计信息/符号等)
-                        const translatedStripped = translateStripped(trimmedText);
-                        if (translatedStripped) {
-                            let leadingSpace = text.slice(0, text.indexOf(trimmedText));
-                            let trailingSpace = text.slice(text.indexOf(trimmedText) + trimmedText.length);
-                            if (/[\u4e00-\u9fa5]/.test(translatedStripped)) {
-                                leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
-                                trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
-                            }
-                            newValue = leadingSpace + translatedStripped + trailingSpace;
-                        }
-                    }
+            if (!trimmedText) {
+                return;
+            }
+            const translated = lookupText(normalizeLookupText(trimmedText), trimmedText);
+            if (translated && translated !== text) {
+                // 保留原始文本的前后空白
+                const trimStart = text.indexOf(trimmedText);
+                let leadingSpace = text.slice(0, trimStart);
+                let trailingSpace = text.slice(trimStart + trimmedText.length);
+                // 如果翻译为中文(去除多余的普通空格并保留换行符)
+                if (chineseRegex.test(translated)) {
+                    leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
+                    trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
                 }
-                if (newValue && newValue !== text) {
-                    node.nodeValue = newValue;
-                }
+                node.nodeValue = leadingSpace + translated + trailingSpace;
             }
         }
     }
 
+    /* TreeWalker过滤函数(避免每次walkAndTranslate调用时重建闭包) */
+    const treeWalkerFilter = function (node) {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+            if (walkerSkipTags.has(node.tagName.toLowerCase())) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            if (node.matches && node.matches(codeSelectorsStr)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            if (isGitHub) {
+                if (node.matches && node.matches(githubSkipSelectorsStr)) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                if (node.matches && node.matches('.ActionListItem-label') && node.closest('.QueryBuilder-ListItem')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+                if (typeof node.className === 'string' && plClassRegex.test(node.className)) {
+                    return NodeFilter.FILTER_REJECT;
+                }
+            } else {
+                if (node.getAttribute('aria-hidden') === 'true') {
+                    return NodeFilter.FILTER_REJECT;
+                }
+            }
+            if (node.className && typeof node.className === 'string' && iconClassRegex.test(node.className)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+        }
+        return NodeFilter.FILTER_ACCEPT;
+    };
 
     /**
      * 遍历指定根节点下的所有节点并应用翻译
@@ -279,38 +273,8 @@
         } else if (rootNode.nodeType === Node.TEXT_NODE && rootNode.parentElement && shouldSkipElement(rootNode.parentElement)) {
             return;
         }
-        // 创建TreeWalker时使用的过滤函数
-        const filter = function (node) {
-            if (node.nodeType === Node.ELEMENT_NODE) {
-                if (walkerSkipTags.has(node.tagName.toLowerCase())) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                if (node.matches && node.matches(codeSelectorsStr)) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-                if (isGitHub) {
-                    if (node.matches && node.matches(githubSkipSelectorsStr)) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    if (node.matches && node.matches('.ActionListItem-label') && node.closest('.QueryBuilder-ListItem')) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                    if (typeof node.className === 'string' && plClassRegex.test(node.className)) {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                } else {
-                    if (node.getAttribute('aria-hidden') === 'true') {
-                        return NodeFilter.FILTER_REJECT;
-                    }
-                }
-                if (node.className && typeof node.className === 'string' && /(?:^|\s)(?:icon|dropdown-icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i.test(node.className)) {
-                    return NodeFilter.FILTER_REJECT;
-                }
-            }
-            return NodeFilter.FILTER_ACCEPT;
-        };
         // 使用TreeWalker高效遍历(遇到被reject的元素将直接跳过其整个子树)
-        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, filter);
+        const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, treeWalkerFilter);
         // 如果rootNode是可接受的(需要翻译它自己)
         translateNode(rootNode, true);
         let node;
@@ -357,8 +321,7 @@
         }
         fullPassTimer = setTimeout(() => {
             fullPassTimer = 0;
-            const root = document.body || document.documentElement;
-            walkAndTranslate(root);
+            walkAndTranslate(document.body || document.documentElement);
         }, delay);
     }
 
@@ -421,38 +384,28 @@
         }
     });
 
-    /**
-     * 初始化翻译功能
-     */
+    /* 初始化翻译功能 */
     function initTranslation() {
         if (initialized) {
             return;
         }
         initialized = true;
-
         // 注入防换行样式(避免翻译后按钮因文字折行而变形)
         const style = document.createElement('style');
         style.textContent = 'button,[type="submit"],[type="button"],[type="reset"],[role="button"]{white-space:nowrap!important}';
         (document.head || document.documentElement).appendChild(style);
-
-        const root = document.body || document.documentElement;
         // 立即开始监听DOM变化
         observer.observe(document.documentElement, {
             childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: obsAttributes
         });
-
+        // 初始化翻译根节点(body或html)
+        const root = document.body || document.documentElement;
         // 第一次翻译
         walkAndTranslate(root);
-
         // 延迟翻译(处理SPA框架动态渲染的内容)
-        setTimeout(() => {
-            walkAndTranslate(document.body || document.documentElement);
-        }, 300);
-
-        // 再次延迟翻译(处理更慢加载的内容)
-        setTimeout(() => walkAndTranslate(document.body || document.documentElement), 1000);
-        setTimeout(() => walkAndTranslate(document.body || document.documentElement), 2000);
-
+        [300, 1000, 2000].forEach(delay => {
+            setTimeout(() => walkAndTranslate(document.body || document.documentElement), delay);
+        });
         // 监听页面生命周期和GitHub Turbo/PJAX(避免刷新或局部导航后漏翻)
         const retrigger = () => scheduleFullPass(80);
         window.addEventListener('pageshow', retrigger, true);

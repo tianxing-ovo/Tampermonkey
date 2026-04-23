@@ -9,11 +9,11 @@
 - `translations.json`：独立维护的翻译词典
 - `translate-icon.png`：脚本图标
 
-当前词典共 **1491** 条翻译映射。
+当前词典共 **1556** 条翻译映射。
 
 ## 当前版本
 
-- 版本：`1.8`
+- 版本：`1.9`
 - 匹配范围：`*://*/*`
 - 运行时机：`document-start`
 - 权限：`GM_getResourceText`
@@ -87,11 +87,15 @@
 - 尽量保持英文键按字母顺序排列，减少无意义 diff
 - 修改本地词典后，需要重新安装脚本或更新 `@resource` 指向的资源才能生效
 
-## 1.8 更新内容
+## 1.9 更新内容
 
+- 提取通用翻译逻辑为 `lookupText` 函数，消除属性翻译与文本翻译中的重复代码
+- 提取 `treeWalkerFilter` 为顶层常量，避免每次遍历时重建闭包
+- 提取 `chineseRegex`、`iconClassRegex` 为顶层常量，消除内联正则重复定义
+- 缓存 `text.indexOf` 计算结果，避免重复调用
+- 合并多个 `setTimeout` 为 `forEach` 循环
+- 简化 `shouldSkipElement`、`translateRelativeTime`、`translateNode` 等函数的实现
 - 补充多条常用界面翻译词条
-- 优化图标字体元素跳过逻辑，减少误翻 `icon`、`material-icons`、`material-symbols` 一类内容
-- 同步调整文档与版本信息
 
 ## 常见问题
 

@@ -60,9 +60,17 @@
     // 需要常规翻译的DOM元素属性白名单
     const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
     // 仅针对按钮类input元素扩充的需要翻译的属性白名单(包含value)
-    const inputAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title', 'value'];
-    // MutationObserver监听动态变化时关注的属性列表
-    const obsAttributes = ['placeholder', 'aria-label', 'title', 'mattooltip'];
+    const inputAttributes = [...standardAttributes, 'value'];
+    // 需要翻译value属性的input按钮类型
+    const buttonInputTypes = new Set(['button', 'submit', 'reset']);
+    // MutationObserver通用监听配置(关注的属性与常规翻译属性一致)
+    const observerOptions = {
+        childList: true,
+        subtree: true,
+        characterData: true,
+        attributes: true,
+        attributeFilter: standardAttributes
+    };
 
     // 预编译正则表达式和映射表(避免每次函数调用重建)
     // 匹配相对时间(例如: "2 months ago")
@@ -133,12 +141,8 @@
      * @param text 要翻译的文本
      */
     function translateRelativeTime(text) {
-        const normalized = text.replace(zeroWidthRegex, '').replace(whitespaceRegex, ' ').trim();
-        const match = normalized.match(timeRegex);
-        if (match) {
-            return `${match[1]} ${unitMap[match[2].toLowerCase()]}前`;
-        }
-        return null;
+        const match = text.replace(zeroWidthRegex, '').replace(whitespaceRegex, ' ').trim().match(timeRegex);
+        return match ? `${match[1]} ${unitMap[match[2].toLowerCase()]}前` : null;
     }
 
     /**
@@ -151,8 +155,9 @@
         const match = normalized.match(symbolStripRegex);
         if (match) {
             const lowerCore = match[2].trim().toLowerCase();
-            if (lowerCaseTranslations.has(lowerCore)) {
-                return match[1] + lowerCaseTranslations.get(lowerCore) + match[3];
+            const translated = lowerCaseTranslations.get(lowerCore);
+            if (translated !== undefined) {
+                return match[1] + translated + match[3];
             }
         }
         return null;
@@ -166,8 +171,9 @@
      * @returns {string | null} 翻译结果或null
      */
     function lookupText(normalizedText, originalText) {
-        if (lowerCaseTranslations.has(normalizedText)) {
-            return lowerCaseTranslations.get(normalizedText);
+        const translated = lowerCaseTranslations.get(normalizedText);
+        if (translated !== undefined) {
+            return translated;
         }
         return translateRelativeTime(originalText) || translateStripped(originalText);
     }
@@ -185,7 +191,7 @@
             if (!isSafe && shouldSkipElement(node)) {
                 return;
             }
-            let attributes = node.tagName === 'INPUT' && (node.type === 'button' || node.type === 'submit' || node.type === 'reset') ? inputAttributes : standardAttributes;
+            let attributes = node.tagName === 'INPUT' && buttonInputTypes.has(node.type) ? inputAttributes : standardAttributes;
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
                 if (value) {
@@ -197,7 +203,7 @@
             }
         }
         // 翻译文本节点
-        if (node.nodeType === Node.TEXT_NODE) {
+        else if (node.nodeType === Node.TEXT_NODE) {
             // 检查父元素是否应该被跳过(包含script/style/textarea等)
             if (node.parentElement && textSkipTags.has(node.parentElement.tagName.toLowerCase())) {
                 return;
@@ -299,9 +305,7 @@
             return;
         }
         observedRoots.add(root);
-        observer.observe(root, {
-            childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: obsAttributes
-        });
+        observer.observe(root, observerOptions);
         walkAndTranslate(root);
     }
 
@@ -395,9 +399,7 @@
         style.textContent = 'button,[type="submit"],[type="button"],[type="reset"],[role="button"]{white-space:nowrap!important}';
         (document.head || document.documentElement).appendChild(style);
         // 立即开始监听DOM变化
-        observer.observe(document.documentElement, {
-            childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: obsAttributes
-        });
+        observer.observe(document.documentElement, observerOptions);
         // 初始化翻译根节点(body或html)
         const root = document.body || document.documentElement;
         // 第一次翻译
@@ -408,18 +410,16 @@
         });
         // 监听页面生命周期和GitHub Turbo/PJAX(避免刷新或局部导航后漏翻)
         const retrigger = () => scheduleFullPass(80);
-        window.addEventListener('pageshow', retrigger, true);
-        window.addEventListener('load', retrigger, true);
+        ['pageshow', 'load'].forEach(event => window.addEventListener(event, retrigger, true));
         document.addEventListener('readystatechange', () => {
             if (document.readyState !== 'loading') {
                 retrigger();
             }
         }, true);
         if (isGitHub) {
-            document.addEventListener('turbo:load', retrigger, true);
-            document.addEventListener('turbo:render', retrigger, true);
-            document.addEventListener('pjax:end', retrigger, true);
-            document.addEventListener('pjax:success', retrigger, true);
+            ['turbo:load', 'turbo:render', 'pjax:end', 'pjax:success'].forEach(event => {
+                document.addEventListener(event, retrigger, true);
+            });
         }
     }
 

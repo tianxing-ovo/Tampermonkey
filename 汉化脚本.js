@@ -71,7 +71,7 @@
     const contextTranslations = [{
         text: 'type',
         selector: '[aria-label^="Search or jump to"] [class*="placeholder"], [aria-label^="Search or jump to"] [class*="Placeholder"]',
-        translation: '输入'
+        translation: '输入 '
     }, {
         text: 'type',
         attr: 'placeholder',

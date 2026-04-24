@@ -65,12 +65,15 @@
     const buttonInputTypes = new Set(['button', 'submit', 'reset']);
     // MutationObserver通用监听配置(关注的属性与常规翻译属性一致)
     const observerOptions = {
-        childList: true,
-        subtree: true,
-        characterData: true,
-        attributes: true,
-        attributeFilter: standardAttributes
+        childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: standardAttributes
     };
+    // 需要根据DOM上下文覆盖的高歧义短词翻译
+    const contextTranslations = [{
+        text: 'type',
+        attr: 'placeholder',
+        selector: 'input, textarea, [contenteditable="true"], [role="textbox"]',
+        translation: '输入'
+    }, {text: 'type', selector: 'th, [role="columnheader"], [role="rowheader"], label, dt', translation: '类型'}];
 
     // 预编译正则表达式和映射表(避免每次函数调用重建)
     // 匹配相对时间(例如: "2 months ago")
@@ -164,13 +167,40 @@
     }
 
     /**
+     * 根据元素上下文覆盖高歧义短词翻译
+     *
+     * @param normalizedText 已规范化的文本
+     * @param element 文本或属性所在元素
+     * @param attr 属性名(文本节点为空)
+     */
+    function lookupContextTranslation(normalizedText, element, attr) {
+        if (!element || !element.closest) {
+            return null;
+        }
+        for (const rule of contextTranslations) {
+            if (rule.text !== normalizedText || (rule.attr && rule.attr !== attr)) {
+                continue;
+            }
+            if (!rule.selector || element.closest(rule.selector)) {
+                return rule.translation;
+            }
+        }
+        return null;
+    }
+
+    /**
      * 通用翻译逻辑: 查字典 → 翻译时间 → 剥离符号后查字典
      *
      * @param {string} normalizedText 已规范化的文本
      * @param {string} originalText 原始文本
+     * @param {{element?: Element, attr?: string}} context 翻译上下文
      * @returns {string | null} 翻译结果或null
      */
-    function lookupText(normalizedText, originalText) {
+    function lookupText(normalizedText, originalText, context = {}) {
+        const contextTranslated = lookupContextTranslation(normalizedText, context.element, context.attr);
+        if (contextTranslated !== null) {
+            return contextTranslated;
+        }
         const translated = lowerCaseTranslations.get(normalizedText);
         if (translated !== undefined) {
             return translated;
@@ -195,7 +225,7 @@
             for (const attr of attributes) {
                 const value = node.getAttribute(attr);
                 if (value) {
-                    const newValue = lookupText(normalizeLookupText(value), value);
+                    const newValue = lookupText(normalizeLookupText(value), value, {element: node, attr});
                     if (newValue && newValue !== value) {
                         node.setAttribute(attr, newValue);
                     }
@@ -217,7 +247,7 @@
             if (!trimmedText) {
                 return;
             }
-            const translated = lookupText(normalizeLookupText(trimmedText), trimmedText);
+            const translated = lookupText(normalizeLookupText(trimmedText), trimmedText, {element: node.parentElement});
             if (translated && translated !== text) {
                 // 保留原始文本的前后空白
                 const trimStart = text.indexOf(trimmedText);

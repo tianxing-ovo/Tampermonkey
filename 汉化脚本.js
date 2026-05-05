@@ -78,8 +78,7 @@
         selector: 'input, textarea, [contenteditable="true"], [role="textbox"]',
         translation: '输入'
     }, {text: 'type', selector: 'th, [role="columnheader"], [role="rowheader"], label, dt', translation: '类型'}, {
-        text: 'type',
-        translation: '类型'
+        text: 'type', translation: '类型'
     }];
 
     // 预编译正则表达式和映射表(避免每次函数调用重建)

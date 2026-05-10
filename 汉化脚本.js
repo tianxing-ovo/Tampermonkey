@@ -69,6 +69,14 @@
     };
     // 需要根据DOM上下文覆盖的高歧义短词翻译
     const contextTranslations = [{
+        text: 'save',
+        selector: 'button, input[type="button"], input[type="submit"], [role="button"], .btn, .button',
+        translation: '保存'
+    }, {
+        text: 'save',
+        selector: '.price, .discount, .savings',
+        translation: '节省'
+    }, {
         text: 'type',
         selector: '[aria-label^="Search or jump to"] [class*="placeholder"], [aria-label^="Search or jump to"] [class*="Placeholder"]',
         translation: '输入 '
@@ -77,8 +85,13 @@
         attr: 'placeholder',
         selector: 'input, textarea, [contenteditable="true"], [role="textbox"]',
         translation: '输入'
-    }, {text: 'type', selector: 'th, [role="columnheader"], [role="rowheader"], label, dt', translation: '类型'}, {
-        text: 'type', translation: '类型'
+    }, {
+        text: 'type',
+        selector: 'th, [role="columnheader"], [role="rowheader"], label, dt',
+        translation: '类型'
+    }, {
+        text: 'type',
+        translation: '类型'
     }];
 
     // 预编译正则表达式和映射表(避免每次函数调用重建)

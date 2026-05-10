@@ -70,7 +70,7 @@
     // 需要根据DOM上下文覆盖的高歧义短词翻译
     const contextTranslations = [{
         text: 'save',
-        selector: '.price, .discount, .savings',
+        selector: '[class*="price"], [class*="discount"], [class*="saving"]',
         translation: '节省'
     }, {
         text: 'save',

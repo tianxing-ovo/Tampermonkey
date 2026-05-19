@@ -106,7 +106,7 @@
     // 匹配文本首尾的非字母部分(数字/符号/空白等)
     const symbolStripRegex = /^([^a-zA-Z]*)(.*[a-zA-Z])([^a-zA-Z]*)$/;
     // 匹配图标类名
-    const iconClassRegex = /(?:^|\s)(?:[a-z0-9_-]*icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i;
+    const iconClassRegex = /(?:^|\s)(?:[a-z0-9_-]*(?<!no-|without-)icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i;
     // 匹配中文字符(用于判断翻译结果是否为中文)
     const chineseRegex = /[\u4e00-\u9fa5]/;
 

@@ -253,6 +253,10 @@
         }
         // 翻译文本节点
         else if (node.nodeType === Node.TEXT_NODE) {
+            // 检查是否在用户可编辑输入区域内
+            if (node.parentElement && (node.parentElement.isContentEditable || node.parentElement.closest('[role="textbox"]'))) {
+                return;
+            }
             // 检查父元素是否应该被跳过(包含script/style/textarea等)
             if (node.parentElement && textSkipTags.has(node.parentElement.tagName.toLowerCase())) {
                 return;
@@ -307,6 +311,11 @@
                 }
             }
             if (node.className && typeof node.className === 'string' && iconClassRegex.test(node.className)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+        } else if (node.nodeType === Node.TEXT_NODE) {
+            // 过滤掉可编辑输入区域内的文本节点
+            if (node.parentElement && (node.parentElement.isContentEditable || node.parentElement.closest('[role="textbox"]'))) {
                 return NodeFilter.FILTER_REJECT;
             }
         }

@@ -2,7 +2,7 @@
 // @name         汉化脚本
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
-// @version      1.9
+// @version      1.9.1
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json

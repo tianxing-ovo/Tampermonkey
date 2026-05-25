@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         汉化脚本
+// @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
 // @version      1.9.1
@@ -12,8 +12,8 @@
 // @namespace    https://greasyfork.org/users/1203191
 // @homepageURL  https://github.com/tianxing-ovo/Tampermonkey
 // @supportURL   https://github.com/tianxing-ovo/Tampermonkey/issues
-// @updateURL    https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/汉化脚本.js
-// @downloadURL  https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/汉化脚本.js
+// @updateURL    https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate.user.js
+// @downloadURL  https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate.user.js
 // ==/UserScript==
 
 

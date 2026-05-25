@@ -58,7 +58,7 @@
     // TreeWalker遍历时直接跳过且不再深入的元素节点(提高DOM树遍历性能)
     const walkerSkipTags = new Set(['script', 'style', 'noscript']);
     // 需要常规翻译的DOM元素属性白名单
-    const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title'];
+    const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title', 'data-placeholder'];
     // 仅针对按钮类input元素扩充的需要翻译的属性白名单(包含value)
     const inputAttributes = [...standardAttributes, 'value'];
     // 需要翻译value属性的input按钮类型
@@ -253,9 +253,11 @@
         }
         // 翻译文本节点
         else if (node.nodeType === Node.TEXT_NODE) {
-            // 检查是否在用户可编辑输入区域内
+            // 检查是否在用户可编辑输入区域内（允许占位符文本翻译）
             if (node.parentElement && (node.parentElement.isContentEditable || node.parentElement.closest('[role="textbox"]'))) {
-                return;
+                if (!node.parentElement.closest('[class*="placeholder" i]')) {
+                    return;
+                }
             }
             // 检查父元素是否应该被跳过(包含script/style/textarea等)
             if (node.parentElement && textSkipTags.has(node.parentElement.tagName.toLowerCase())) {
@@ -314,9 +316,11 @@
                 return NodeFilter.FILTER_REJECT;
             }
         } else if (node.nodeType === Node.TEXT_NODE) {
-            // 过滤掉可编辑输入区域内的文本节点
+            // 过滤掉可编辑输入区域内的文本节点（允许占位符文本）
             if (node.parentElement && (node.parentElement.isContentEditable || node.parentElement.closest('[role="textbox"]'))) {
-                return NodeFilter.FILTER_REJECT;
+                if (!node.parentElement.closest('[class*="placeholder" i]')) {
+                    return NodeFilter.FILTER_REJECT;
+                }
             }
         }
         return NodeFilter.FILTER_ACCEPT;

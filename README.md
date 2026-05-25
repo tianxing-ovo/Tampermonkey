@@ -9,11 +9,11 @@
 - `translations.json`：独立维护的翻译词典
 - `translate-icon.png`：脚本图标
 
-当前词典共 **1753** 条翻译映射。
+当前词典共 **1758** 条翻译映射。
 
 ## 当前版本
 
-- 版本：`1.9.1`
+- 版本：`1.9.2`
 - 匹配范围：`*://*/*`
 - 运行时机：`document-start`
 - 权限：`GM_getResourceText`

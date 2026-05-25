@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
-// @version      1.9.1
+// @version      1.9.2
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -58,7 +58,7 @@
     // TreeWalker遍历时直接跳过且不再深入的元素节点(提高DOM树遍历性能)
     const walkerSkipTags = new Set(['script', 'style', 'noscript']);
     // 需要常规翻译的DOM元素属性白名单
-    const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title', 'data-placeholder'];
+    const standardAttributes = ['aria-label', 'placeholder', 'mattooltip', 'title', 'data-placeholder', 'data-default-action-text', 'data-comment-text'];
     // 仅针对按钮类input元素扩充的需要翻译的属性白名单(包含value)
     const inputAttributes = [...standardAttributes, 'value'];
     // 需要翻译value属性的input按钮类型

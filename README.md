@@ -1,7 +1,6 @@
 # Tampermonkey 网页自动汉化助手
 
-一个面向英文网站界面的 Tampermonkey 用户脚本。脚本会在页面加载和后续动态渲染过程中，把常见英文 UI
-文案翻译为中文，并尽量降低对页面结构和交互体验的影响。
+面向英文网站的 Tampermonkey 汉化脚本，在动态渲染中自动翻译常用 UI 且不影响交互体验。
 
 ## 项目结构
 
@@ -13,7 +12,7 @@
 
 ## 当前版本
 
-- 版本：`1.9.2`
+- 版本：`1.9.3`
 - 匹配范围：`*://*/*`
 - 运行时机：`document-start`
 - 权限：`GM_getResourceText`
@@ -29,6 +28,7 @@
 - 监听 DOM 变化，适配 React、Vue、Angular 等动态页面
 - 支持 Shadow DOM 内部内容翻译
 - 对 GitHub 做了额外兼容，跳过 README、代码区、文件名、路径面包屑、搜索构建器、提交信息等结构化内容
+- 识别 GitHub 语法高亮 `pl-*` 类并跳过对应内容，同时避开 `pl-sm-*`、`pl-md-*` 等布局类误判
 - 自动跳过代码块、编辑器、脚本样式节点、图标字体区域，降低误翻概率
 
 ## 性能设计
@@ -46,19 +46,19 @@
 
 1. 安装 [Tampermonkey](https://www.tampermonkey.net/) 浏览器扩展。
 2. 打开脚本直链：
-   [安装汉化脚本](https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/%E6%B1%89%E5%8C%96%E8%84%9A%E6%9C%AC.js)
+   [安装汉化脚本](https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate.user.js)
 3. 在 Tampermonkey 弹窗中确认安装。
 
 ### 方式二：从本地文件导入
 
-1. 下载 `汉化脚本.js`。
+1. 下载 `translate.user.js`。
 2. 打开 Tampermonkey 管理面板。
 3. 通过“实用工具”导入脚本文件。
 
 ### 方式三：本地调试
 
 1. 克隆当前仓库。
-2. 在 Tampermonkey 中新建脚本并粘贴 `汉化脚本.js` 内容。
+2. 在 Tampermonkey 中新建脚本并粘贴 `translate.user.js` 内容。
 3. 如果只调试脚本逻辑，保存后直接刷新目标页面即可。
 4. 如果要联调 `translations.json`，需要把脚本头部的 `@resource translations ...` 改成你自己的可访问 JSON 地址，然后重新安装或更新脚本。
 
@@ -87,15 +87,10 @@
 - 尽量保持英文键按字母顺序排列，减少无意义 diff
 - 修改本地词典后，需要重新安装脚本或更新 `@resource` 指向的资源才能生效
 
-## 1.9 更新内容
+## 1.9.3 更新内容
 
-- 提取通用翻译逻辑为 `lookupText` 函数，消除属性翻译与文本翻译中的重复代码
-- 提取 `treeWalkerFilter` 为顶层常量，避免每次遍历时重建闭包
-- 提取 `chineseRegex`、`iconClassRegex` 为顶层常量，消除内联正则重复定义
-- 缓存 `text.indexOf` 计算结果，避免重复调用
-- 合并多个 `setTimeout` 为 `forEach` 循环
-- 简化 `shouldSkipElement`、`translateRelativeTime`、`translateNode` 等函数的实现
-- 补充多条常用界面翻译词条
+- 同步脚本元信息版本号
+- 优化 GitHub 语法高亮 `pl-*` 类过滤说明，明确避开响应式布局类误判
 
 ## 常见问题
 

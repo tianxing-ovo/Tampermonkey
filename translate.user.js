@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
-// @version      1.9.2
+// @version      1.9.3
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -101,8 +101,8 @@
     const unitMap = {
         'year': '年', 'month': '个月', 'week': '周', 'day': '天', 'hour': '小时', 'minute': '分钟', 'second': '秒'
     };
-    // GitHub语法高亮类名(避开 pl-1, pl-2 等布局类)
-    const plClassRegex = /(?:^|\s)pl-[a-z]/;
+    // GitHub语法高亮类名(避开布局类)
+    const plClassRegex = /(?:^|\s)pl-(?!(?:sm|md|lg|xl|2xl)-)[a-z]/;
     // 匹配文本首尾的非字母部分(数字/符号/空白等)
     const symbolStripRegex = /^([^a-zA-Z]*)(.*[a-zA-Z])([^a-zA-Z]*)$/;
     // 匹配图标类名

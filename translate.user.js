@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
-// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png?v=1
+// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
 // @version      1.9.3
 // @author       tianxing
 // @match        *://*/*

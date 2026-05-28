@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
-// @version      1.9.3
+// @version      1.9.4
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -20,9 +20,12 @@
 (function () {
     'use strict';
 
-    // 翻译映射表(英文->中文)从外部资源加载
+    // 从外部资源加载翻译映射表和上下文翻译规则
     // noinspection JSUnresolvedReference
-    const translations = JSON.parse(GM_getResourceText('translations'));
+    const rawTranslations = JSON.parse(GM_getResourceText('translations'));
+    const translations = rawTranslations.mappings || rawTranslations;
+    /** @type {Array<{text: string, selector?: string, attr?: string, translation: string}>} */
+    const contextTranslations = rawTranslations.contextRules || [];
     const isGitHub = location.hostname.includes('github.com');
     const whitespaceRegex = /\s+/g;
     const zeroWidthRegex = /[\u200B-\u200D\uFEFF]/g;
@@ -67,32 +70,7 @@
     const observerOptions = {
         childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: standardAttributes
     };
-    // 需要根据DOM上下文覆盖的高歧义短词翻译
-    const contextTranslations = [{
-        text: 'save',
-        selector: '[class*="price"], [class*="discount"], [class*="saving"]',
-        translation: '节省'
-    }, {
-        text: 'save',
-        selector: 'button, input[type="button"], input[type="submit"], [role="button"], .btn, .button',
-        translation: '保存'
-    }, {
-        text: 'type',
-        selector: '[aria-label^="Search or jump to"] [class*="placeholder"], [aria-label^="Search or jump to"] [class*="Placeholder"]',
-        translation: '输入 '
-    }, {
-        text: 'type',
-        attr: 'placeholder',
-        selector: 'input, textarea, [contenteditable="true"], [role="textbox"]',
-        translation: '输入'
-    }, {
-        text: 'type',
-        selector: 'th, [role="columnheader"], [role="rowheader"], label, dt',
-        translation: '类型'
-    }, {
-        text: 'type',
-        translation: '类型'
-    }];
+
 
     // 预编译正则表达式和映射表(避免每次函数调用重建)
     // 匹配相对时间(例如: "2 months ago")
@@ -191,6 +169,7 @@
      * @param normalizedText 已规范化的文本
      * @param element 文本或属性所在元素
      * @param attr 属性名(文本节点为空)
+     * @returns {string | null} 翻译结果或null
      */
     function lookupContextTranslation(normalizedText, element, attr) {
         if (!element || !element.closest) {
@@ -208,7 +187,7 @@
     }
 
     /**
-     * 通用翻译逻辑: 查字典 → 翻译时间 → 剥离符号后查字典
+     * 通用翻译逻辑: 根据上下文翻译高歧义短词 → 根据词典翻译通用短词 → 翻译相对时间 → 剥离符号后查词典
      *
      * @param {string} normalizedText 已规范化的文本
      * @param {string} originalText 原始文本
@@ -216,10 +195,12 @@
      * @returns {string | null} 翻译结果或null
      */
     function lookupText(normalizedText, originalText, context = {}) {
+        // 根据上下文翻译高歧义短词
         const contextTranslated = lookupContextTranslation(normalizedText, context.element, context.attr);
         if (contextTranslated !== null) {
             return contextTranslated;
         }
+        // 根据词典翻译通用短词
         const translated = lowerCaseTranslations.get(normalizedText);
         if (translated !== undefined) {
             return translated;

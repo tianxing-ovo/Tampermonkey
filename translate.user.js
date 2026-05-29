@@ -70,7 +70,11 @@
         '.css-truncate-target',
         '[data-testid*="breadcrumbs"]',
         '.QueryBuilder-ListItem .ActionListItem-label',
-        '[class*="pl-"]:not([class*="pl-sm"]):not([class*="pl-md"]):not([class*="pl-lg"]):not([class*="pl-xl"]):not([class*="pl-2xl"])'
+        '.pl-c', '.pl-c1', '.pl-cos', '.pl-cx', '.pl-e', '.pl-en', '.pl-ent', '.pl-ii', '.pl-k', '.pl-ko',
+        '.pl-kol', '.pl-mc', '.pl-mh', '.pl-mi', '.pl-mi1', '.pl-mml', '.pl-mo', '.pl-mp', '.pl-mr',
+        '.pl-ms', '.pl-pds', '.pl-s', '.pl-s1', '.pl-smi', '.pl-smw', '.pl-sr', '.pl-token', '.pl-v',
+        '.pl-va', '.pl-vmp', '.pl-vpf',
+        '[role="tree"]', '[role="treeitem"]', 'file-tree'
     ];
     // 动态合并最终需要屏蔽翻译的选择器列表
     const skipSelectorsStr = [...codeSelectors, ...(isGitHub ? githubSkipSelectors : ['.notranslate'])].join(', ');
@@ -235,11 +239,7 @@
     /* TreeWalker过滤函数(避免每次walkAndTranslate调用时重建闭包) */
     const treeWalkerFilter = function (node) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-            const className = node.getAttribute('class');
-            if (skipTags.has(node.localName) ||
-                node.matches(skipSelectorsStr) ||
-                (!isGitHub && node.getAttribute('aria-hidden') === 'true') ||
-                (className && iconClassRegex.test(className))) {
+            if (skipTags.has(node.localName) || shouldSkipElement(node)) {
                 return NodeFilter.FILTER_REJECT;
             }
         } else if (node.nodeType === Node.TEXT_NODE) {
@@ -271,7 +271,9 @@
         let node;
         while (node = walker.nextNode()) {
             translateNode(node, true);
-            handleShadowRoot(node.shadowRoot);
+            if (node.nodeType === Node.ELEMENT_NODE) {
+                handleShadowRoot(node.shadowRoot);
+            }
         }
     }
 
@@ -389,6 +391,6 @@
                 obs.disconnect();
                 initTranslation();
             }
-        }).observe(document.documentElement, {childList: true});
+        }).observe(document.documentElement, { childList: true });
     }
 })();

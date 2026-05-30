@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
-// @version      1.9.5
+// @version      1.9.6
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -239,12 +239,15 @@
     /* TreeWalker过滤函数(避免每次walkAndTranslate调用时重建闭包) */
     const treeWalkerFilter = function (node) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-            if (skipTags.has(node.localName) || shouldSkipElement(node)) {
+            if (shouldSkipElement(node)) {
+                return NodeFilter.FILTER_REJECT;
+            }
+            if (node.localName !== 'textarea' && skipTags.has(node.localName)) {
                 return NodeFilter.FILTER_REJECT;
             }
         } else if (node.nodeType === Node.TEXT_NODE) {
             const parent = node.parentElement;
-            if (parent && isEditableTextbox(parent)) {
+            if (parent && (isEditableTextbox(parent) || skipTags.has(parent.localName))) {
                 return NodeFilter.FILTER_REJECT;
             }
         }

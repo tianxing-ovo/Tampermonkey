@@ -8,8 +8,6 @@
 - `translations.json`：独立维护的翻译词典
 - `translate-icon.png`：脚本图标
 
-当前词典共 **1868** 条翻译映射。
-
 ## 当前版本
 
 - 版本：`1.9.6`
@@ -99,7 +97,7 @@
 ## 1.9.6 更新内容
 
 - **修复 `<textarea>` 属性无法翻译的问题**：优化了 `TreeWalker` 的节点过滤逻辑，使 `textarea` 标签本身能被正常访问以汉化其属性（如 `placeholder` 等），同时仍能完全隔离和拒绝对其内部子节点（如用户输入内容、默认文本等）的汉化，确保输入数据不被污染。
-- **扩展汉化词典**：补充了 “Create new issue”、“Add a description”、“No one assigned”、“Create more” 以及 “Add a title” 等常用 UI 翻译映射，词典条目数提升至 1859 条。
+- **扩展汉化词典**：补充了 “Create new issue”、“Add a description”、“No one assigned”、“Create more” 以及 “Add a title” 等常用 UI 翻译映射。
 
 ## 1.9.5 更新内容
 

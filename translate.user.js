@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
-// @version      1.9.6
+// @version      1.9.7
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -138,14 +138,18 @@
     }
 
     /**
-     * 剥离文本首尾的非字母部分(数字/符号/空白)后查字典
+     * 剥离文本首尾的非字母部分(数字/符号/空白)后翻译
      *
      * @param text 要翻译的文本
+     * @param context 翻译上下文
+     * @returns {string | null} 翻译结果或null
      */
-    function translateStripped(text) {
+    function translateStripped(text, context = {}) {
         const match = text.replace(zeroWidthRegex, '').match(symbolStripRegex);
         if (match) {
-            const translated = lowerCaseTranslations.get(match[2].toLowerCase());
+            const strippedText = match[2].toLowerCase();
+            const translated = lookupContextTranslation(strippedText, context.element, context.attr) ??
+                lowerCaseTranslations.get(strippedText);
             if (translated !== undefined) {
                 return match[1] + translated + match[3];
             }
@@ -185,7 +189,7 @@
         return lookupContextTranslation(normalizedText, context.element, context.attr) ??
             lowerCaseTranslations.get(normalizedText) ??
             translateRelativeTime(normalizedText) ??
-            translateStripped(originalText);
+            translateStripped(originalText, context);
     }
 
     /**

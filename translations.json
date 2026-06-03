@@ -1910,6 +1910,11 @@
   },
   "contextRules": [
     {
+      "text": "off",
+      "selector": "[class*=\"price\"], [class*=\"discount\"], [class*=\"saving\"], [class*=\"coupon\"], [class*=\"offer\"], [class*=\"sale\"], [class*=\"promo\"], td .text-success, [role=\"cell\"] .text-success",
+      "translation": "优惠"
+    },
+    {
       "text": "save",
       "selector": "[class*=\"price\"], [class*=\"discount\"], [class*=\"saving\"]",
       "translation": "节省"

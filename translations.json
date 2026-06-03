@@ -1,6 +1,7 @@
 {
   "mappings": {
     "10% off": "10% 优惠",
+    "50% discount from referral applied": "已应用推荐的 50% 优惠",
     "About": "关于",
     "About Us": "关于我们",
     "Accept": "接受",
@@ -75,6 +76,7 @@
     "All actions": "所有操作",
     "All Activity": "所有动态",
     "All builds": "所有构建",
+    "All checks have passed": "所有检查已通过",
     "All commits": "所有提交",
     "All commits from this branch will be added to the base branch via a merge commit.": "此分支的所有提交将通过合并提交添加到基准分支",
     "All featured topics": "所有精选话题",
@@ -260,6 +262,7 @@
     "Choose the perfect plan for your journey": "为您的旅程选择完美的计划",
     "Choose visibility": "选择可见性",
     "Choose who can see and commit to this repository": "选择谁可以查看和提交到此仓库",
+    "Choose your plan": "选择您的计划",
     "Chose any model": "选择任意模型",
     "City": "城市",
     "Classic Pages experience": "经典页面体验",
@@ -1398,6 +1401,7 @@
     "Sample Media": "示例媒体",
     "Sat": "周六",
     "Save": "保存",
+    "Save 20% when billed annually": "年付可省 20%",
     "Save and continue": "保存并继续",
     "Save changes": "保存更改",
     "Save draft": "保存草稿",
@@ -1960,7 +1964,7 @@
   "contextRules": [
     {
       "text": "off",
-      "selector": "[class*=\"price\"], [class*=\"discount\"], [class*=\"saving\"], [class*=\"coupon\"], [class*=\"offer\"], [class*=\"sale\"], [class*=\"promo\"], td .text-success, [role=\"cell\"] .text-success",
+      "selector": "[class*=\"price\"], [class*=\"discount\"], [class*=\"saving\"], [class*=\"coupon\"], [class*=\"offer\"], [class*=\"sale\"], [class*=\"promo\"], td .text-success, [role=\"cell\"] .text-success, [aria-label*=\"offer\" i], [aria-label*=\"referral\" i], [aria-label*=\"discount\" i], [aria-label*=\"credits\" i]",
       "translation": "优惠"
     },
     {

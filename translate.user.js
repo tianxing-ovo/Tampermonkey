@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
-// @version      1.9.7
+// @version      1.9.8
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -48,8 +48,7 @@
     // 上下文翻译规则
     /** @type {(*&{text: *|string})[]} */
     const contextTranslations = (rawTranslations.contextRules || []).map(rule => ({
-        ...rule,
-        text: rule.text ? normalizeLookupText(rule.text) : ''
+        ...rule, text: rule.text ? normalizeLookupText(rule.text) : ''
     }));
 
     // 代码区域选择器
@@ -91,17 +90,33 @@
         childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: standardAttributes
     };
     // 匹配相对时间(例如: "2 months ago")
-    const timeRegex = /^(\d+)\s+(year|month|week|day|hour|minute|second)s?\s+ago$/;
+    const timeRegex = /^(\d+) (year|month|week|day|hour|minute|second)s? ago$/;
     // 时间单位映射
     const unitMap = {
         'year': '年', 'month': '个月', 'week': '周', 'day': '天', 'hour': '小时', 'minute': '分钟', 'second': '秒'
     };
-    // 匹配文本首尾的非字母部分(数字/符号/空白等)
-    const symbolStripRegex = /^([^a-zA-Z]*)(.*[a-zA-Z])([^a-zA-Z]*)$/;
-    // 匹配图标类名
-    const iconClassRegex = /(?:^|\s)(?:[a-z0-9_-]*(?<!no-|without-)icon|material-icons(?:-[a-z]+)?|material-symbols(?:-[a-z]+)?)(?:$|\s)/i;
     // 匹配中文字符(用于判断翻译结果是否为中文)
     const chineseRegex = /[\u4e00-\u9fa5]/;
+
+    /**
+     * 检查类名是否为图标类型
+     *
+     * @param className 元素的类名
+     * @returns {boolean} 是否为图标类型
+     */
+    function isIconClass(className) {
+        if (!className) {
+            return false;
+        }
+        const classes = className.split(/\s+/);
+        return classes.some(cls => {
+            const lowerCls = cls.toLowerCase();
+            if (lowerCls.includes("material-icons") || lowerCls.includes("material-symbols")) {
+                return true;
+            }
+            return lowerCls.includes("icon") && !lowerCls.includes("no-icon") && !lowerCls.includes("without-icon");
+        });
+    }
 
     /**
      * 检查元素是否应该跳过翻译
@@ -109,13 +124,12 @@
      * @param element 要检查的元素
      */
     function shouldSkipElement(element) {
-        if (!element || !element.closest) {
+        if (!element?.closest) {
             return false;
         }
         const className = element.getAttribute('class');
-        return !!(element.closest(skipSelectorsStr) ||
-            (!isGitHub && element.getAttribute('aria-hidden') === 'true') ||
-            (className && iconClassRegex.test(className)));
+        return !!(element.closest(skipSelectorsStr) || (!isGitHub && element.getAttribute('aria-hidden') === 'true')
+            || isIconClass(className));
     }
 
     /**
@@ -145,14 +159,23 @@
      * @returns {string | null} 翻译结果或null
      */
     function translateStripped(text, context = {}) {
-        const match = text.replace(zeroWidthRegex, '').match(symbolStripRegex);
-        if (match) {
-            const strippedText = match[2].toLowerCase();
-            const translated = lookupContextTranslation(strippedText, context.element, context.attr) ??
-                lowerCaseTranslations.get(strippedText);
-            if (translated !== undefined) {
-                return match[1] + translated + match[3];
-            }
+        const cleanText = text.replace(zeroWidthRegex, '');
+        // 找到第一个字母的位置
+        const firstLetterIdx = cleanText.search(/[a-zA-Z]/);
+        if (firstLetterIdx === -1) {
+            return null;
+        }
+        let lastLetterIdx = cleanText.length - 1;
+        while (lastLetterIdx >= firstLetterIdx && !/[a-zA-Z]/.test(cleanText[lastLetterIdx])) {
+            lastLetterIdx--;
+        }
+        const leading = cleanText.slice(0, firstLetterIdx);
+        const strippedText = cleanText.slice(firstLetterIdx, lastLetterIdx + 1);
+        const trailing = cleanText.slice(lastLetterIdx + 1);
+        const strippedTextLower = strippedText.toLowerCase();
+        const translated = lookupContextTranslation(strippedTextLower, context.element, context.attr) ?? lowerCaseTranslations.get(strippedTextLower);
+        if (translated !== undefined) {
+            return leading + translated + trailing;
         }
         return null;
     }
@@ -166,14 +189,11 @@
      * @returns {string | null} 翻译结果或null
      */
     function lookupContextTranslation(normalizedText, element, attr) {
-        if (!element || !element.closest) {
+        if (!element?.closest) {
             return null;
         }
-        const rule = contextTranslations.find(r =>
-            r.text === normalizedText &&
-            (!r.attr || r.attr === attr) &&
-            (!r.selector || element.closest(r.selector))
-        );
+        const rule = contextTranslations.find(r => r.text === normalizedText && (!r.attr || r.attr === attr)
+            && (!r.selector || element.closest(r.selector)));
         return rule ? rule.translation : null;
     }
 
@@ -187,56 +207,74 @@
      */
     function lookupText(normalizedText, originalText, context = {}) {
         return lookupContextTranslation(normalizedText, context.element, context.attr) ??
-            lowerCaseTranslations.get(normalizedText) ??
-            translateRelativeTime(normalizedText) ??
+            lowerCaseTranslations.get(normalizedText) ?? translateRelativeTime(normalizedText) ??
             translateStripped(originalText, context);
     }
 
     /**
-     * 翻译单个节点的文本或属性
+     * 翻译单个元素节点
+     * 
+     * @param node 要翻译的元素节点
+     * @param isSafe 标记该节点已经过验证(无需再调用shouldSkipElement)
+     */
+    function translateElementNode(node, isSafe) {
+        if (!isSafe && shouldSkipElement(node)) {
+            return;
+        }
+        const attributes = node.localName === 'input' && buttonInputTypes.has(node.type) ? inputAttributes : standardAttributes;
+        for (const attr of attributes) {
+            const value = node.getAttribute(attr);
+            if (value) {
+                const newValue = lookupText(normalizeLookupText(value), value, {element: node, attr});
+                if (newValue && newValue !== value) {
+                    node.setAttribute(attr, newValue);
+                }
+            }
+        }
+    }
+
+    /**
+     * 翻译单个文本节点
      *
+     * @param node 要翻译的文本节点
+     * @param isSafe 标记该节点已经过验证(无需再调用shouldSkipElement)
+     */
+    function translateTextNode(node, isSafe) {
+        const parent = node.parentElement;
+        if (!isSafe && parent) {
+            if (isEditableTextbox(parent) || skipTags.has(parent.localName) || shouldSkipElement(parent)) {
+                return;
+            }
+        }
+        const text = node.nodeValue;
+        const trimmedText = text.trim();
+        if (!trimmedText) {
+            return;
+        }
+        const translated = lookupText(normalizeLookupText(trimmedText), trimmedText, {element: parent});
+        if (translated && translated !== trimmedText) {
+            const trimStart = text.indexOf(trimmedText);
+            let leadingSpace = text.slice(0, trimStart);
+            let trailingSpace = text.slice(trimStart + trimmedText.length);
+            if (chineseRegex.test(translated)) {
+                leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
+                trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
+            }
+            node.nodeValue = leadingSpace + translated + trailingSpace;
+        }
+    }
+
+    /**
+     * 翻译单个节点
+     * 
      * @param node 要翻译的节点
      * @param isSafe 标记该节点已经过验证(无需再调用shouldSkipElement)
      */
     function translateNode(node, isSafe = false) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-            if (!isSafe && shouldSkipElement(node)) {
-                return;
-            }
-            const attributes = node.localName === 'input' && buttonInputTypes.has(node.type) ? inputAttributes : standardAttributes;
-            for (const attr of attributes) {
-                const value = node.getAttribute(attr);
-                if (value) {
-                    const newValue = lookupText(normalizeLookupText(value), value, { element: node, attr });
-                    if (newValue && newValue !== value) {
-                        node.setAttribute(attr, newValue);
-                    }
-                }
-            }
-        }
-        else if (node.nodeType === Node.TEXT_NODE) {
-            const parent = node.parentElement;
-            if (!isSafe && parent) {
-                if (isEditableTextbox(parent) || skipTags.has(parent.localName) || shouldSkipElement(parent)) {
-                    return;
-                }
-            }
-            const text = node.nodeValue;
-            const trimmedText = text.trim();
-            if (!trimmedText) {
-                return;
-            }
-            const translated = lookupText(normalizeLookupText(trimmedText), trimmedText, { element: parent });
-            if (translated && translated !== trimmedText) {
-                const trimStart = text.indexOf(trimmedText);
-                let leadingSpace = text.slice(0, trimStart);
-                let trailingSpace = text.slice(trimStart + trimmedText.length);
-                if (chineseRegex.test(translated)) {
-                    leadingSpace = leadingSpace.replace(/[ \t]+/g, '');
-                    trailingSpace = trailingSpace.replace(/[ \t]+/g, '');
-                }
-                node.nodeValue = leadingSpace + translated + trailingSpace;
-            }
+            translateElementNode(node, isSafe);
+        } else if (node.nodeType === Node.TEXT_NODE) {
+            translateTextNode(node, isSafe);
         }
     }
 
@@ -289,6 +327,7 @@
 
     /**
      * 处理Shadow Root
+     * 
      * @param root Shadow Root节点
      */
     function handleShadowRoot(root) {
@@ -306,7 +345,7 @@
     let initialized = false;
 
     /**
-     * 计划在指定延迟后执行完整遍历翻译(兜底异步渲染漏网节点)
+     * 计划在指定延迟后执行完整遍历翻译
      *
      * @param delay 延迟毫秒
      */
@@ -318,6 +357,35 @@
         }, delay);
     }
 
+    /**
+     * 处理MutationObserver的变更
+     *
+     * @param mutation 变更对象
+     * @param processedNodes 已处理节点集合
+     */
+    function processMutation(mutation, processedNodes) {
+        if (mutation.type === 'attributes' || mutation.type === 'characterData') {
+            const target = mutation.target;
+            if (!processedNodes.has(target)) {
+                processedNodes.add(target);
+                translateNode(target);
+                handleShadowRoot(target.shadowRoot);
+            }
+        } else if (mutation.type === 'childList') {
+            for (const node of mutation.addedNodes) {
+                if (!processedNodes.has(node)) {
+                    processedNodes.add(node);
+                    if (node.nodeType === Node.ELEMENT_NODE) {
+                        walkAndTranslate(node);
+                        handleShadowRoot(node.shadowRoot);
+                    } else if (node.nodeType === Node.TEXT_NODE) {
+                        translateNode(node);
+                    }
+                }
+            }
+        }
+    }
+
     /* 处理待处理的DOM变化 */
     function processPendingMutations() {
         const mutations = pendingMutations;
@@ -325,29 +393,7 @@
         rafScheduled = false;
         const processedNodes = new Set();
         for (const mutation of mutations) {
-            // 处理属性变化和文本内容变化
-            if (mutation.type === 'attributes' || mutation.type === 'characterData') {
-                if (!processedNodes.has(mutation.target)) {
-                    processedNodes.add(mutation.target);
-                    translateNode(mutation.target);
-                    handleShadowRoot(mutation.target.shadowRoot);
-                }
-            }
-            // 处理新增节点
-            else if (mutation.type === 'childList') {
-                for (const node of mutation.addedNodes) {
-                    if (!processedNodes.has(node)) {
-                        processedNodes.add(node);
-                        if (node.nodeType === Node.ELEMENT_NODE) {
-                            // 遍历并翻译新增元素
-                            walkAndTranslate(node);
-                            handleShadowRoot(node.shadowRoot);
-                        } else if (node.nodeType === Node.TEXT_NODE) {
-                            translateNode(node);
-                        }
-                    }
-                }
-            }
+            processMutation(mutation, processedNodes);
         }
     }
 
@@ -380,7 +426,7 @@
         scheduleFullPass(1500);
         // 监听页面生命周期和GitHub Turbo/PJAX(避免刷新或局部导航后漏翻)
         const retrigger = () => scheduleFullPass(80);
-        ['pageshow', 'load'].forEach(event => window.addEventListener(event, retrigger, true));
+        ['pageshow', 'load'].forEach(event => globalThis.addEventListener(event, retrigger, true));
         document.addEventListener('readystatechange', () => document.readyState !== 'loading' && retrigger(), true);
         if (isGitHub) {
             ['turbo:load', 'turbo:render', 'pjax:end', 'pjax:success'].forEach(event => document.addEventListener(event, retrigger, true));
@@ -398,6 +444,6 @@
                 obs.disconnect();
                 initTranslation();
             }
-        }).observe(document.documentElement, { childList: true });
+        }).observe(document.documentElement, {childList: true});
     }
 })();

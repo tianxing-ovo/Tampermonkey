@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
-// @version      1.9.8
+// @version      1.9.9
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -114,7 +114,8 @@
             if (lowerCls.includes("material-icons") || lowerCls.includes("material-symbols")) {
                 return true;
             }
-            return lowerCls.includes("icon") && !lowerCls.includes("no-icon") && !lowerCls.includes("without-icon");
+            const isStrictIcon = lowerCls === "icon" || lowerCls === "iconfont" || lowerCls === "fa" || lowerCls.startsWith("fa-");
+            return isStrictIcon && !lowerCls.includes("no-icon") && !lowerCls.includes("without-icon");
         });
     }
 

@@ -63,6 +63,8 @@
     const githubSkipSelectors = [
         'article.markdown-body',
         '.QueryBuilder-StyledInputContent',
+        '.styled-input-container',
+        '.styled-input-content',
         '.react-directory-filename-cell',
         '.react-directory-commit-message',
         '.js-path-segment',

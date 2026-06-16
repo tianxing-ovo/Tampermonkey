@@ -209,6 +209,10 @@
      * @returns {string | null} 翻译结果或null
      */
     function lookupText(normalizedText, originalText, context = {}) {
+        // 跳过以斜杠开头的文本
+        if (originalText.trim().startsWith('/')) {
+            return null;
+        }
         return lookupContextTranslation(normalizedText, context.element, context.attr) ??
             lowerCaseTranslations.get(normalizedText) ?? translateRelativeTime(normalizedText) ??
             translateStripped(originalText, context);
@@ -228,7 +232,7 @@
         for (const attr of attributes) {
             const value = node.getAttribute(attr);
             if (value) {
-                const newValue = lookupText(normalizeLookupText(value), value, {element: node, attr});
+                const newValue = lookupText(normalizeLookupText(value), value, { element: node, attr });
                 if (newValue && newValue !== value) {
                     node.setAttribute(attr, newValue);
                 }
@@ -254,7 +258,7 @@
         if (!trimmedText) {
             return;
         }
-        const translated = lookupText(normalizeLookupText(trimmedText), trimmedText, {element: parent});
+        const translated = lookupText(normalizeLookupText(trimmedText), trimmedText, { element: parent });
         if (translated && translated !== trimmedText) {
             const trimStart = text.indexOf(trimmedText);
             let leadingSpace = text.slice(0, trimStart);
@@ -447,6 +451,6 @@
                 obs.disconnect();
                 initTranslation();
             }
-        }).observe(document.documentElement, {childList: true});
+        }).observe(document.documentElement, { childList: true });
     }
 })();

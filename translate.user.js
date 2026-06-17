@@ -433,7 +433,7 @@
         scheduleFullPass(1500);
         // 监听页面生命周期和GitHub Turbo/PJAX(避免刷新或局部导航后漏翻)
         const retrigger = () => scheduleFullPass(80);
-        ['pageshow', 'load'].forEach(event => globalThis.addEventListener(event, retrigger, true));
+        ['pageshow', 'load'].forEach(event => window.addEventListener(event, retrigger, true));
         document.addEventListener('readystatechange', () => document.readyState !== 'loading' && retrigger(), true);
         if (isGitHub) {
             ['turbo:load', 'turbo:render', 'pjax:end', 'pjax:success'].forEach(event => document.addEventListener(event, retrigger, true));

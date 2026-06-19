@@ -99,6 +99,10 @@
     };
     // 匹配中文字符(用于判断翻译结果是否为中文)
     const chineseRegex = /[\u4e00-\u9fa5]/;
+    // 排除图标类名
+    const iconExcludeRegex = /(?:no|without)-icon/;
+    // 匹配图标类名
+    const iconClassRegex = /^icon(?:font)?$|^fa(?:-|$)|material-(?:icons|symbols)|octicon|mdi-|-icon(?:-|$)/;
 
     /**
      * 检查类名是否为图标类型
@@ -110,14 +114,9 @@
         if (!className) {
             return false;
         }
-        const classes = className.split(/\s+/);
-        return classes.some(cls => {
-            const lowerCls = cls.toLowerCase();
-            if (lowerCls.includes("material-icons") || lowerCls.includes("material-symbols")) {
-                return true;
-            }
-            const isStrictIcon = lowerCls === "icon" || lowerCls === "iconfont" || lowerCls === "fa" || lowerCls.startsWith("fa-");
-            return isStrictIcon && !lowerCls.includes("no-icon") && !lowerCls.includes("without-icon");
+        return className.split(/\s+/).some(cls => {
+            const c = cls.toLowerCase();
+            return !iconExcludeRegex.test(c) && iconClassRegex.test(c);
         });
     }
 

@@ -100,7 +100,7 @@
     // 匹配中文字符(用于判断翻译结果是否为中文)
     const chineseRegex = /[\u4e00-\u9fa5]/;
     // 排除图标类名
-    const iconExcludeRegex = /(?:no|without)-icon/;
+    const iconExcludeRegex = /(?:no|without|has|with)-icon/;
     // 匹配图标类名
     const iconClassRegex = /^icon(?:font)?$|^fa(?:-|$)|material-(?:icons|symbols)|octicon|mdi-|-icon(?:-|$)/;
 

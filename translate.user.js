@@ -2,7 +2,7 @@
 // @name         网页自动汉化助手
 // @description  自动翻译网页中的英文内容为中文
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
-// @version      1.9.9
+// @version      1.10.0
 // @author       tianxing
 // @match        *://*/*
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
@@ -87,9 +87,10 @@
     const inputAttributes = standardAttributes.concat('value');
     // 需要翻译value属性的input按钮类型
     const buttonInputTypes = new Set(['button', 'submit', 'reset']);
-    // MutationObserver通用监听配置(关注的属性与常规翻译属性一致)
+    // MutationObserver通用监听配置(常规翻译属性 + 显隐相关属性)
+    const observedAttributes = standardAttributes.concat('aria-hidden', 'hidden');
     const observerOptions = {
-        childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: standardAttributes
+        childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: observedAttributes
     };
     // 匹配相对时间(例如: "2 months ago")
     const timeRegex = /^(\d+) (year|month|week|day|hour|minute|second)s? ago$/;
@@ -364,18 +365,42 @@
     }
 
     /**
+     * 元素是否处于可显示状态
+     *
+     * @param element 元素
+     * @returns {boolean} 是否可显示
+     */
+    function isRevealableElement(element) {
+        return element?.nodeType === Node.ELEMENT_NODE
+            && element.getAttribute('aria-hidden') !== 'true'
+            && !element.hasAttribute('hidden');
+    }
+
+    /**
      * 处理MutationObserver的变更
      *
      * @param mutation 变更对象
      * @param processedNodes 已处理节点集合
      */
     function processMutation(mutation, processedNodes) {
-        if (mutation.type === 'attributes' || mutation.type === 'characterData') {
+        if (mutation.type === 'attributes') {
+            const target = mutation.target;
+            if (!target || processedNodes.has(target)) {
+                return;
+            }
+            processedNodes.add(target);
+            if ((mutation.attributeName === 'aria-hidden' || mutation.attributeName === 'hidden')
+                && isRevealableElement(target)) {
+                walkAndTranslate(target);
+            } else {
+                translateNode(target);
+            }
+            handleShadowRoot(target.shadowRoot);
+        } else if (mutation.type === 'characterData') {
             const target = mutation.target;
             if (!processedNodes.has(target)) {
                 processedNodes.add(target);
                 translateNode(target);
-                handleShadowRoot(target.shadowRoot);
             }
         } else if (mutation.type === 'childList') {
             for (const node of mutation.addedNodes) {
@@ -437,6 +462,12 @@
         if (isGitHub) {
             ['turbo:load', 'turbo:render', 'pjax:end', 'pjax:success'].forEach(event => document.addEventListener(event, retrigger, true));
         }
+        // 滚动后补扫一次
+        let scrollPassTimer = 0;
+        window.addEventListener('scroll', () => {
+            clearTimeout(scrollPassTimer);
+            scrollPassTimer = setTimeout(() => scheduleFullPass(60), 180);
+        }, { capture: true, passive: true });
     }
 
     // 尽早执行翻译(不等待DOMContentLoaded)

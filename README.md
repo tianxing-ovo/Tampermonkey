@@ -2,19 +2,13 @@
 
 无感翻译英文网站常用 UI 的 Tampermonkey 汉化脚本
 
+[![Greasy Fork Installs](https://img.shields.io/greasyfork/dt/558446?label=%E6%80%BB%E5%AE%89%E8%A3%85%E9%87%8F)](https://greasyfork.org/zh-CN/scripts/558446-%E7%BD%91%E9%A1%B5%E8%87%AA%E5%8A%A8%E6%B1%89%E5%8C%96%E5%8A%A9%E6%89%8B) [![Greasy Fork Daily](https://img.shields.io/badge/dynamic/json?url=https%3A%2F%2Fgreasyfork.org%2Fscripts%2F558446.json&query=%24.daily_installs&label=%E6%97%A5%E5%AE%89%E8%A3%85%E9%87%8F&color=blue)](https://greasyfork.org/zh-CN/scripts/558446-%E7%BD%91%E9%A1%B5%E8%87%AA%E5%8A%A8%E6%B1%89%E5%8C%96%E5%8A%A9%E6%89%8B) [![Greasy Fork Version](https://img.shields.io/greasyfork/v/558446?label=%E7%89%88%E6%9C%AC)](https://greasyfork.org/zh-CN/scripts/558446-%E7%BD%91%E9%A1%B5%E8%87%AA%E5%8A%A8%E6%B1%89%E5%8C%96%E5%8A%A9%E6%89%8B) [![License](https://img.shields.io/github/license/tianxing-ovo/Tampermonkey?label=%E8%AE%B8%E5%8F%AF%E8%AF%81)](LICENSE)
+
 ## 项目结构
 
 - `translate.user.js`：用户脚本主体
 - `translations.json`：独立维护的翻译词典
 - `translate-icon.png`：脚本图标
-
-## 当前版本
-
-- 版本：`1.10.0`
-- 匹配范围：`*://*/*`
-- 运行时机：`document-start`
-- 权限：`GM_getResourceText`
-- 许可证：`Apache-2.0`
 
 ## 功能概览
 
@@ -27,6 +21,8 @@
 ### 动态与高级渲染
 - 动态监听 DOM 变化并实时适配主流框架页面
 - 穿透 Shadow DOM 内部并翻译其封闭节点内容
+- 智能识别交互组件与 Tooltip 提示框并破解 aria-hidden 盲目过滤
+- 采用 FILTER_SKIP 深入遍历 Modal 弹窗及容器内部节点
 - 智能补扫粘性头部以防止元素滚动后复原为英文
 
 ### 深度兼容与防误翻
@@ -84,7 +80,7 @@
 
 **Q: 为什么有些英文文本没有被翻译？**
 
-未收录在字典中的词汇或被脚本主动跳过的代码及编辑器等区域均不会被翻译
+未收录在字典中的词汇以及脚本主动忽略的代码和编辑器区域均不处理翻译
 
 **Q: 脚本会影响网页加载性能吗？**
 

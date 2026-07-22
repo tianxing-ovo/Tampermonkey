@@ -51,6 +51,13 @@
         ...rule, text: rule.text ? normalizeLookupText(rule.text) : ''
     }));
 
+    // 允许忽略 aria-hidden 过滤的交互与可见文本组件选择器
+    const interactiveSelectors = [
+        'button', 'a', '[role="button"]', '[role="tooltip"]',
+        '[class*="btn" i]', '[class*="tooltip" i]', '[data-component*="tooltip" i]', '[popover]'
+    ];
+    const interactiveSelectorsStr = interactiveSelectors.join(', ');
+
     // 代码区域选择器
     const codeSelectors = [
         'pre', 'code',
@@ -131,8 +138,11 @@
             return false;
         }
         const className = element.getAttribute('class');
-        return !!(element.closest(skipSelectorsStr) || (!isGitHub && element.getAttribute('aria-hidden') === 'true')
-            || isIconClass(className));
+        // 判断元素本身或其祖先是否为按钮/链接/提示框等可见交互组件
+        const isInteractiveElement = !!element.closest(interactiveSelectorsStr);
+        // 非交互类元素且带有 aria-hidden="true" 时进行跳过
+        const skipAriaHidden = !isInteractiveElement && element.getAttribute('aria-hidden') === 'true';
+        return !!(element.closest(skipSelectorsStr) || skipAriaHidden || isIconClass(className));
     }
 
     /**
@@ -288,11 +298,13 @@
     /* TreeWalker过滤函数(避免每次walkAndTranslate调用时重建闭包) */
     const treeWalkerFilter = function (node) {
         if (node.nodeType === Node.ELEMENT_NODE) {
-            if (shouldSkipElement(node)) {
+            // 代码块与特定标签彻底拒绝遍历子树
+            if (node.closest(skipSelectorsStr) || (node.localName !== 'textarea' && skipTags.has(node.localName))) {
                 return NodeFilter.FILTER_REJECT;
             }
-            if (node.localName !== 'textarea' && skipTags.has(node.localName)) {
-                return NodeFilter.FILTER_REJECT;
+            // 仅跳过当前节点本身并继续深入遍历其子树节点
+            if (shouldSkipElement(node)) {
+                return NodeFilter.FILTER_SKIP;
             }
         } else if (node.nodeType === Node.TEXT_NODE) {
             const parent = node.parentElement;
@@ -312,17 +324,17 @@
         if (!rootNode) {
             return;
         }
-        // 过滤需要跳过的根节点
-        if (rootNode.nodeType === Node.ELEMENT_NODE && shouldSkipElement(rootNode)) {
+        // 代码块等特定区域拒绝作为根节点遍历
+        if (rootNode.nodeType === Node.ELEMENT_NODE && rootNode.closest(skipSelectorsStr)) {
             return;
         }
         // 使用TreeWalker高效遍历子树
         const walker = document.createTreeWalker(rootNode, NodeFilter.SHOW_ELEMENT | NodeFilter.SHOW_TEXT, treeWalkerFilter);
         // 翻译根节点自己
-        translateNode(rootNode, true);
+        translateNode(rootNode);
         let node;
         while (node = walker.nextNode()) {
-            translateNode(node, true);
+            translateNode(node);
             if (node.nodeType === Node.ELEMENT_NODE) {
                 handleShadowRoot(node.shadowRoot);
             }
@@ -371,9 +383,7 @@
      * @returns {boolean} 是否可显示
      */
     function isRevealableElement(element) {
-        return element?.nodeType === Node.ELEMENT_NODE
-            && element.getAttribute('aria-hidden') !== 'true'
-            && !element.hasAttribute('hidden');
+        return element?.nodeType === Node.ELEMENT_NODE && !element.hasAttribute('hidden');
     }
 
     /**

@@ -54,7 +54,7 @@
     // 允许忽略 aria-hidden 过滤的交互与可见文本组件选择器
     const interactiveSelectors = [
         'button', 'a', '[role="button"]', '[role="tooltip"]',
-        '[class*="btn" i]', '[class*="tooltip" i]', '[data-component*="tooltip" i]', '[popover]'
+        '[class*="btn" i]', '[class*="tooltip" i]', '[data-component*="tooltip" i]', '[class*="placeholder" i]', '[popover]'
     ];
     const interactiveSelectorsStr = interactiveSelectors.join(', ');
 

@@ -58,20 +58,20 @@
     ];
     const interactiveSelectorsStr = interactiveSelectors.join(', ');
 
-    // 代码区域选择器
-    const codeSelectors = [
+    // 全局通用屏蔽选择器
+    const globalSkipSelectors = [
         'pre', 'code',
         '[class*="blob-code"]', '[class*="blob-line"]',
         '[class*="react-code"]', '[class*="react-file"]', '[class*="react-blob"]',
         '.highlight', '.CodeMirror', '.monaco-editor',
-        '[data-testid="read-only-cursor-text-area"]', '[data-testid*="code-"]'
+        '[data-testid="read-only-cursor-text-area"]', '[data-testid*="code-"]',
+        '[class*="inputOverlay" i]', '.styled-input-container', '.styled-input-content',
+        '[role="tree"]', '[role="treeitem"]'
     ];
     // GitHub专用屏蔽选择器
     const githubSkipSelectors = [
         'article.markdown-body',
         '.QueryBuilder-StyledInputContent',
-        '.styled-input-container',
-        '.styled-input-content',
         '.react-directory-filename-cell',
         '.react-directory-commit-message',
         '.js-path-segment',
@@ -82,10 +82,10 @@
         '.pl-kol', '.pl-mc', '.pl-mh', '.pl-mi', '.pl-mi1', '.pl-mml', '.pl-mo', '.pl-mp', '.pl-mr',
         '.pl-ms', '.pl-pds', '.pl-s', '.pl-s1', '.pl-smi', '.pl-smw', '.pl-sr', '.pl-token', '.pl-v',
         '.pl-va', '.pl-vmp', '.pl-vpf',
-        '[role="tree"]', '[role="treeitem"]', 'file-tree'
+        'file-tree'
     ];
     // 动态合并最终需要屏蔽翻译的选择器列表
-    const skipSelectorsStr = [...codeSelectors, ...(isGitHub ? githubSkipSelectors : ['.notranslate'])].join(', ');
+    const skipSelectorsStr = [...globalSkipSelectors, ...(isGitHub ? githubSkipSelectors : ['.notranslate'])].join(', ');
     // 遍历和翻译时跳过且不再深入的标签类型(保护内部代码/样式/编辑框等)
     const skipTags = new Set(['textarea', 'script', 'style', 'noscript']);
     // 需要常规翻译的DOM元素属性白名单

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.0.0
+// @version      1.0.1
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -749,10 +749,6 @@
                 <span id="ag-dedup-stat" class="header-dedup-stat"></span>
             </div>
             <div class="header-actions">
-                <button class="btn" id="ag-btn-scan">
-                    <svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>
-                    重新扫描
-                </button>
                 <button class="btn" id="ag-btn-toggle-select">全选</button>
                 <button class="btn" id="ag-btn-copy-links">复制链接</button>
                 <button class="btn btn-primary btn-download-selected" id="ag-btn-download-selected">下载</button>
@@ -1327,12 +1323,6 @@
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         isModalOpen = false;
         modal.classList.remove('active');
-    });
-
-    shadow.getElementById('ag-btn-scan').addEventListener('click', () => {
-        scanPageImages();
-        renderGallery();
-        showToast('已重新扫描全网页');
     });
 
     shadow.getElementById('ag-btn-toggle-select').addEventListener('click', () => {

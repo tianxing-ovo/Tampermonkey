@@ -101,7 +101,6 @@
                 return '';
             }
         }
-        if (url.includes('/undefined') || url.includes('/null')) return '';
         return url;
     }
 
@@ -211,7 +210,6 @@
             source: source,
             width: 0,
             height: 0,
-            aspectRatio: 'square',
             hash: '',
             loaded: false
         };
@@ -223,20 +221,13 @@
         tempImg.onload = function () {
             imgObj.width = tempImg.naturalWidth || tempImg.width || 0;
             imgObj.height = tempImg.naturalHeight || tempImg.height || 0;
-            if (imgObj.width > 0 && imgObj.height > 0) {
-                const ratio = imgObj.width / imgObj.height;
-                if (ratio > 1.2) imgObj.aspectRatio = 'wide';
-                else if (ratio < 0.8) imgObj.aspectRatio = 'tall';
-                else imgObj.aspectRatio = 'square';
-                if (!imgObj.hash) {
-                    imgObj.hash = calculateDHash(tempImg);
-                }
+            if (imgObj.width > 0 && imgObj.height > 0 && !imgObj.hash) {
+                imgObj.hash = calculateDHash(tempImg);
             }
             imgObj.loaded = true;
             updateFloatingBadge();
-            if (isModalOpen) {
-                updateDimDisplays();
-                if (enableDeduplication) renderGallery();
+            if (isModalOpen && enableDeduplication) {
+                renderGallery();
             }
         };
         tempImg.onerror = function () {
@@ -544,19 +535,6 @@
             align-items: center;
             gap: 6px;
         }
-        .filter-input {
-            width: 65px;
-            background: #ffffff;
-            border: 1px solid #cbd5e1;
-            color: var(--text-main);
-            padding: 4px 8px;
-            border-radius: 6px;
-            font-size: 12px;
-            outline: none;
-        }
-        .filter-input:focus {
-            border-color: var(--primary);
-        }
         .filter-checkbox {
             cursor: pointer;
             accent-color: var(--primary);
@@ -685,23 +663,6 @@
             color: var(--text-muted);
             font-family: monospace;
         }
-        .img-download-btn {
-            background: #f1f5f9;
-            border: 1px solid #e2e8f0;
-            color: var(--text-muted);
-            cursor: pointer;
-            padding: 4px;
-            border-radius: 6px;
-            display: flex;
-            align-items: center;
-            transition: all 0.2s;
-        }
-        .img-download-btn:hover {
-            color: #fff;
-            background: var(--primary);
-            border-color: var(--primary);
-        }
-        .img-download-btn svg { width: 14px; height: 14px; fill: currentColor; }
 
         /* 进度提示浮层 */
         .toast-notify {
@@ -862,20 +823,6 @@
         if (el) {
             el.textContent = (enableDeduplication && dupCount > 0) ? `(已智能去重 ${dupCount} 张)` : '';
         }
-    }
-
-    // 动态刷新当前卡片的分辨率文字显示
-    function updateDimDisplays() {
-        const cards = shadow.querySelectorAll('.img-card');
-        cards.forEach(card => {
-            const url = card.dataset.url;
-            if (!url) return;
-            const item = imageStore.get(url);
-            if (item && item.width && item.height) {
-                const dimSpan = card.querySelector('.img-dim');
-                if (dimSpan) dimSpan.textContent = `${item.width} × ${item.height}`;
-            }
-        });
     }
 
     // 渲染图片网格画廊列表

@@ -1,15 +1,15 @@
 // ==UserScript==
 // @name         网页自动汉化助手
-// @description  自动翻译网页中的英文内容为中文
-// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
+// @namespace    https://greasyfork.org/users/1203191
 // @version      1.11.0
-// @author       tianxing
+// @description  自动翻译网页中的英文内容为中文
+// @author       tianxing-ovo
+// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
 // @match        *://*/*
+// @run-at       document-start
 // @resource     translations https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translations.json
 // @grant        GM_getResourceText
-// @run-at       document-start
 // @license      Apache-2.0
-// @namespace    https://greasyfork.org/users/1203191
 // @homepageURL  https://github.com/tianxing-ovo/Tampermonkey
 // @supportURL   https://github.com/tianxing-ovo/Tampermonkey/issues
 // @updateURL    https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate.user.js

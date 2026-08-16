@@ -1,12 +1,12 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.0.1
+// @version      1.1.0
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
 // @match        *://*/*
-// @run-at       document-idle
+// @run-at       document-start
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
@@ -26,15 +26,355 @@
     'use strict';
 
     // 避免在嵌套子框架中重复注入悬浮按钮
-    if (window.self !== window.top) return;
-
+    if (window.self !== window.top) {
+        return;
+    }
     // 存储所有已嗅探到的图片对象集合
     const imageStore = new Map();
+    // 存储所有已嗅探到的音频对象集合
+    const audioStore = new Map();
+    // 记录上一次处理的AList目录路径
+    let lastAListPath = '';
+    let currentTab = 'IMAGE';
     let isModalOpen = false;
     let selectedImages = new Set();
+    let selectedAudios = new Set();
     let enableDeduplication = true;
-    let knownFormats = new Set();
-    let activeFormatFilters = new Set();
+    let knownImageFormats = new Set();
+    let activeImageFormatFilters = new Set();
+    let knownAudioFormats = new Set();
+    let activeAudioFormatFilters = new Set();
+
+    // 识别音频文件常见后缀特征
+    const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
+
+    // 
+    const AUDIO_MIME_MAP = [
+        ['mpeg', 'MP3'], ['mp3', 'MP3'],
+        ['mp4', 'M4A'], ['m4a', 'M4A'],
+        ['flac', 'FLAC'], ['wav', 'WAV'], ['aac', 'AAC'],
+        ['ogg', 'OGG'], ['opus', 'OPUS']
+    ];
+
+    // 音频文件后缀→格式名称映射表（按声明顺序匹配）
+    const AUDIO_EXT_MAP = [
+        ['.mp3', 'MP3'], ['.m4a', 'M4A'], ['.flac', 'FLAC'], ['.wav', 'WAV'],
+        ['.aac', 'AAC'], ['.ogg', 'OGG'], ['.opus', 'OPUS'], ['.wma', 'WMA'], ['.weba', 'WEBA']
+    ];
+
+    // 从网络链接或类型推断规范的音频格式名称
+    function detectAudioFormat(url, mime = '') {
+        if (mime) {
+            for (const [keyword, fmt] of AUDIO_MIME_MAP) {
+                if (mime.includes(keyword)) {
+                    return fmt;
+                }
+            }
+        }
+        const cleanUrl = url.split('?')[0].toLowerCase();
+        for (const [ext, fmt] of AUDIO_EXT_MAP) {
+            if (cleanUrl.endsWith(ext)) {
+                return fmt;
+            }
+        }
+        return 'AUDIO';
+    }
+
+    // 从任意网络链接提取文件名
+    function extractFileName(url, defaultName = 'audio_track') {
+        try {
+            const pathname = new URL(url, window.location.href).pathname;
+            const segment = pathname.split('/').filter(Boolean).pop();
+            if (segment) {
+                return decodeURIComponent(segment);
+            }
+        } catch (e) { }
+        return defaultName;
+    }
+
+    // 从任意字符串中提取规范的绝对网络链接
+    function normalizeUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return '';
+        }
+        url = url.trim().replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
+        if (!url || url === 'undefined' || url === 'null' || url.includes('/undefined') || url.includes('/null') || url.includes('[object')) {
+            return '';
+        }
+        if (url.startsWith('//')) {
+            url = window.location.protocol + url;
+        } else if (url.startsWith('/')) {
+            url = window.location.origin + url;
+        } else if (!url.startsWith('http') && !url.startsWith('data:') && !url.startsWith('blob:')) {
+            try {
+                url = new URL(url, window.location.href).href;
+            } catch (e) {
+                return '';
+            }
+        }
+        return url;
+    }
+
+    // 清洗并升级主流图床为最高清原图地址
+    function upgradeToHdUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return url;
+        }
+        if (url.startsWith('data:') || url.startsWith('blob:')) {
+            return url;
+        }
+
+        let hdUrl = url;
+        hdUrl = hdUrl.replace(/!(small|thumb|preview|middle|large|webp|\d+w|\d+h).*/i, '');
+        hdUrl = hdUrl.replace(/@\d+[wh]_\d+[wh].*/i, '');
+        hdUrl = hdUrl.replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2');
+        hdUrl = hdUrl.replace(/\/thumb\/\d+\//i, '/original/');
+        hdUrl = hdUrl.replace(/\.webp$/i, '.jpg');
+        return hdUrl;
+    }
+
+    // 格式化文件字节大小为易读文本
+    function formatBytes(bytes) {
+        if (!bytes || isNaN(bytes) || bytes <= 0) {
+            return '';
+        }
+        if (bytes < 1024) {
+            return `${bytes} B`;
+        }
+        if (bytes < 1024 * 1024) {
+            return `${(bytes / 1024).toFixed(1)} KB`;
+        }
+        return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    // 注册音频对象到全局存储集合
+    function registerAudio(rawUrl, source = 'NETWORK', meta = {}) {
+        const url = normalizeUrl(rawUrl);
+        if (!url || url.length < 5) {
+            return;
+        }
+        // 跳过m3u8流媒体播放列表
+        if (/\.m3u8(\?|$)/i.test(url) || (meta.mime && meta.mime.includes('mpegurl'))) {
+            return;
+        }
+        if (audioStore.has(url)) {
+            const exist = audioStore.get(url);
+            if (meta.name && !exist.name) {
+                exist.name = meta.name;
+            }
+            if (meta.size && !exist.size) {
+                exist.size = meta.size;
+            }
+            return;
+        }
+
+        const format = meta.format || detectAudioFormat(url, meta.mime);
+        if (format && !knownAudioFormats.has(format)) {
+            knownAudioFormats.add(format);
+            activeAudioFormatFilters.add(format);
+        }
+
+        const name = meta.name || extractFileName(url, `audio_${audioStore.size + 1}.${format.toLowerCase()}`);
+        const audioObj = {
+            url: url,
+            name: name,
+            format: format,
+            source: source,
+            size: meta.size || 0,
+            duration: meta.duration || 0,
+            addedAt: Date.now()
+        };
+
+        audioStore.set(url, audioObj);
+        updateFloatingBadge();
+        if (isModalOpen) {
+            updateModalHeaderCounters();
+            if (currentTab === 'AUDIO') {
+                renderGallery();
+            }
+        }
+    }
+
+    // 深度递归扫描任意对象中潜藏的音频网络链接
+    function deepScanForMedia(obj, depth = 0) {
+        if (!obj || depth > 6) {
+            return;
+        }
+        if (typeof obj === 'string') {
+            if (AUDIO_EXT_REGEX.test(obj)) {
+                registerAudio(obj, 'API_PAYLOAD');
+            }
+            return;
+        }
+        if (Array.isArray(obj)) {
+            for (let i = 0; i < obj.length; i++) {
+                deepScanForMedia(obj[i], depth + 1);
+            }
+            return;
+        }
+        if (typeof obj === 'object') {
+            for (const key of Object.keys(obj)) {
+                const val = obj[key];
+                if (typeof val === 'string') {
+                    if (/^(url|src|playUrl|play_url|audioUrl|audio_url|streamUrl|file_url|raw_url|download_url)$/i.test(key)) {
+                        if (val.startsWith('http') && (AUDIO_EXT_REGEX.test(val) || val.includes('/audio/') || val.includes('/sound/'))) {
+                            const nameVal = obj.name || obj.title || obj.fileName || obj.songName || '';
+                            registerAudio(val, 'API_PAYLOAD', { name: nameVal, size: obj.size || 0 });
+                        }
+                    }
+                }
+                deepScanForMedia(val, depth + 1);
+            }
+        }
+    }
+    
+    /**
+     * 处理AList列表响应
+     * 
+     * @param json AList列表响应对象
+     */
+    function handleAListResponse(json) {
+        if (!json || json.code !== 200 || !json.data || !Array.isArray(json.data.content)){
+            return;
+        }
+        // 获取当前路径
+        const currentPath = json.data.path
+            ? decodeURIComponent(json.data.path)
+            : decodeURIComponent(window.location.pathname);
+        // 检测路径是否发生变化
+        if (lastAListPath !== '' && lastAListPath !== currentPath) {
+            audioStore.clear();
+            selectedAudios.clear();
+            knownAudioFormats.clear();
+            activeAudioFormatFilters.clear();
+            updateFloatingBadge();
+            if (isModalOpen) {
+                updateModalHeaderCounters();
+                renderGallery();
+            }
+        }
+        lastAListPath = currentPath;
+        const list = json.data.content;
+        // 过滤出音频文件
+        const audioItems = list.filter(item => !item['is_dir'] && AUDIO_EXT_REGEX.test(item.name));
+        if (audioItems.length === 0) {
+            return;
+        }
+        // 遍历音频文件并异步换取真实直链
+        audioItems.forEach(item => {
+            // 拼接完整路径
+            const fullPath = (item.path && typeof item.path === 'string')
+                ? item.path
+                : `${currentPath.replace(/\/$/, '')}/${item.name}`;
+            const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
+            const fmt = item.name.split('.').pop().toUpperCase();
+            // 签名链接追加sign参数，无签名直接用直链
+            const finalUrl = item.sign ? `${directUrl}?sign=${item.sign}` : directUrl;
+            registerAudio(finalUrl, 'ALIST_LIST', {
+                name: item.name,
+                size: item.size || 0,
+                format: fmt
+            });
+            // 已签名的链接无需再换取源链
+            if (item.sign) {
+                return;
+            }
+            try {
+                fetch(`${window.location.origin}/api/fs/get`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json;charset=utf-8' },
+                    body: JSON.stringify({ path: fullPath, password: '' })
+                }).then(r => r.json()).then(res => {
+                    if (res && res.code === 200 && res.data?.['raw_url']) {
+                        registerAudio(res.data['raw_url'], 'ALIST_RAW', {
+                            name: item.name,
+                            size: res.data.size || item.size || 0,
+                            format: fmt
+                        });
+                    }
+                }).catch(() => { });
+            } catch (e) { }
+        });
+    }
+
+    // 拦截全局网络请求以实时捕获音频链接与数据接口
+    const originalFetch = window.fetch;
+    window.fetch = async function (...args) {
+        const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+        if (reqUrl && AUDIO_EXT_REGEX.test(reqUrl)) {
+            registerAudio(reqUrl, 'FETCH');
+        }
+        const response = await originalFetch.apply(this, args);
+        try {
+            const clone = response.clone();
+            const contentType = clone.headers.get('content-type') || '';
+            if (contentType.includes('application/json')) {
+                clone.json().then(data => {
+                    if (reqUrl.includes('/api/fs/list')) {
+                        handleAListResponse(data);
+                    }
+                    if (reqUrl.includes('/api/fs/get') && data?.data?.['raw_url']) {
+                        registerAudio(data.data['raw_url'], 'ALIST_GET', {
+                            name: data.data.name,
+                            size: data.data.size
+                        });
+                    }
+                    deepScanForMedia(data);
+                }).catch(() => { });
+            } else if (contentType.startsWith('audio/')) {
+                registerAudio(reqUrl, 'FETCH_MIME', { mime: contentType });
+            }
+        } catch (e) { }
+        return response;
+    };
+
+    // 拦截全局异步请求对象以捕获音频请求
+    const originalXhrOpen = XMLHttpRequest.prototype.open;
+    XMLHttpRequest.prototype.open = function (method, url) {
+        if (url && typeof url === 'string' && AUDIO_EXT_REGEX.test(url)) {
+            registerAudio(url, 'XHR');
+        }
+        this.addEventListener('load', function () {
+            try {
+                const ct = this.getResponseHeader('content-type') || '';
+                if (ct.includes('application/json') && this.responseText) {
+                    const data = JSON.parse(this.responseText);
+                    if (typeof url === 'string' && url.includes('/api/fs/list')) {
+                        handleAListResponse(data);
+                    }
+                    deepScanForMedia(data);
+                } else if (ct.startsWith('audio/')) {
+                    registerAudio(url, 'XHR_MIME', { mime: ct });
+                }
+            } catch (e) { }
+        });
+        return originalXhrOpen.apply(this, arguments);
+    };
+
+    // 拦截音频构造函数以捕获内存中创建的音频实例
+    const OriginalAudio = window.Audio;
+    window.Audio = function (src) {
+        if (src) {
+            registerAudio(src, 'NEW_AUDIO');
+        }
+        return new OriginalAudio(src);
+    };
+    window.Audio.prototype = OriginalAudio.prototype;
+
+    // 拦截音频元素地址赋值操作
+    const audioSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
+    if (audioSrcDescriptor && audioSrcDescriptor.set) {
+        const rawSet = audioSrcDescriptor.set;
+        Object.defineProperty(HTMLMediaElement.prototype, 'src', {
+            set(val) {
+                if (val && typeof val === 'string' && (this.tagName === 'AUDIO' || AUDIO_EXT_REGEX.test(val))) {
+                    registerAudio(val, 'MEDIA_ELEMENT_SRC');
+                }
+                return rawSet.call(this, val);
+            },
+            get: audioSrcDescriptor.get
+        });
+    }
 
     // 离线复用的微型指纹计算画布
     const calcCanvas = document.createElement('canvas');
@@ -64,67 +404,39 @@
             }
             return hex;
         } catch (e) {
-            // 遇到跨域限制时回退为宽高尺寸与路径特征哈希
+            // 遇到跨域限制时回退为尺寸哈希
             return `dim_${imgEl.naturalWidth || 0}x${imgEl.naturalHeight || 0}`;
         }
     }
 
-    // 清洗并升级主流图床为最高清原图地址
-    function upgradeToHdUrl(url) {
-        if (!url || typeof url !== 'string') return url;
-        if (url.startsWith('data:') || url.startsWith('blob:')) return url;
-        
-        let hdUrl = url;
-        hdUrl = hdUrl.replace(/!(small|thumb|preview|middle|large|webp|\d+w|\d+h).*/i, '');
-        hdUrl = hdUrl.replace(/@\d+[wh]_\d+[wh].*/i, '');
-        hdUrl = hdUrl.replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2');
-        hdUrl = hdUrl.replace(/\/thumb\/\d+\//i, '/original/');
-        hdUrl = hdUrl.replace(/\.webp$/i, '.jpg');
-        return hdUrl;
-    }
-
-    // 从任意字符串中提取规范的绝对网络链接
-    function normalizeUrl(url) {
-        if (!url || typeof url !== 'string') return '';
-        url = url.trim().replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
-        if (!url || url === 'undefined' || url === 'null' || url.includes('/undefined') || url.includes('/null') || url.includes('[object')) {
-            return '';
-        }
-        if (url.startsWith('//')) {
-            url = window.location.protocol + url;
-        } else if (url.startsWith('/')) {
-            url = window.location.origin + url;
-        } else if (!url.startsWith('http') && !url.startsWith('data:') && !url.startsWith('blob:')) {
-            try {
-                url = new URL(url, window.location.href).href;
-            } catch (e) {
-                return '';
-            }
-        }
-        return url;
-    }
-
     // 通过二进制魔数特征精准推导真实图片格式
     function detectFormatFromBytes(bytes) {
-        if (!bytes || bytes.length < 12) return '';
-        // 识别 PNG 文件魔数
-        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) return 'PNG';
-        // 识别 JPEG 文件魔数
-        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'JPG';
-        // 识别 WEBP 文件魔数
+        if (!bytes || bytes.length < 12) {
+            return '';
+        }
+        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
+            return 'PNG';
+        }
+        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+            return 'JPG';
+        }
         if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
-            bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) return 'WEBP';
-        // 识别 GIF 文件魔数
-        if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) return 'GIF';
-        // 识别 SVG 文本特征
+            bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+            return 'WEBP';
+        }
+        if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+            return 'GIF';
+        }
         if (bytes[0] === 0x3c) {
             const head = String.fromCharCode(...bytes.slice(0, 100)).toLowerCase();
-            if (head.includes('<svg') || head.includes('<?xml')) return 'SVG';
+            if (head.includes('<svg') || head.includes('<?xml')) {
+                return 'SVG';
+            }
         }
         return '';
     }
 
-    // 使用油猴无跨域限制接口拉取图片计算二进制唯一指纹与真实格式
+    // 使用油猴接口拉取图片计算二进制唯一指纹与真实格式
     function fetchBinaryFingerprint(url) {
         return new Promise((resolve) => {
             if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
@@ -160,47 +472,74 @@
         });
     }
 
+    // data:图片前缀→格式名称映射表（按声明顺序匹配）
+    const IMAGE_DATA_PREFIX_MAP = [
+        ['data:image/svg', 'SVG'], ['data:image/png', 'PNG'],
+        ['data:image/jpeg', 'JPG'], ['data:image/jpg', 'JPG'],
+        ['data:image/webp', 'WEBP'], ['data:', 'DATA']
+    ];
+
+    // 图片后缀与查询参数→格式名称映射表（按声明顺序匹配）
+    const IMAGE_EXT_MAP = [
+        { fmt: 'PNG', exts: ['.png'] },
+        { fmt: 'JPG', exts: ['.jpg', '.jpeg'] },
+        { fmt: 'WEBP', exts: ['.webp'] },
+        { fmt: 'SVG', exts: ['.svg'] },
+        { fmt: 'GIF', exts: ['.gif'] },
+        { fmt: 'AVIF', exts: ['.avif'] }
+    ];
+
     // 根据图片链接推断格式类型
-    function detectFormat(url) {
-        if (url.startsWith('data:image/svg')) return 'SVG';
-        if (url.startsWith('data:image/png')) return 'PNG';
-        if (url.startsWith('data:image/jpeg') || url.startsWith('data:image/jpg')) return 'JPG';
-        if (url.startsWith('data:image/webp')) return 'WEBP';
-        if (url.startsWith('data:')) return 'DATA';
-        
+    function detectImageFormat(url) {
+        for (const [prefix, fmt] of IMAGE_DATA_PREFIX_MAP) {
+            if (url.startsWith(prefix)) {
+                return fmt;
+            }
+        }
+
         const cleanUrl = url.split('?')[0].toLowerCase();
         const queryStr = (url.split('?')[1] || '').toLowerCase();
-        if (cleanUrl.endsWith('.png') || queryStr.includes('format=png') || queryStr.includes('f=png')) return 'PNG';
-        if (cleanUrl.endsWith('.jpg') || cleanUrl.endsWith('.jpeg') || queryStr.includes('format=jpg') || queryStr.includes('f=jpg')) return 'JPG';
-        if (cleanUrl.endsWith('.webp') || queryStr.includes('format=webp') || queryStr.includes('f=webp')) return 'WEBP';
-        if (cleanUrl.endsWith('.svg') || queryStr.includes('format=svg') || queryStr.includes('f=svg')) return 'SVG';
-        if (cleanUrl.endsWith('.gif') || queryStr.includes('format=gif') || queryStr.includes('f=gif')) return 'GIF';
-        if (cleanUrl.endsWith('.avif') || queryStr.includes('format=avif') || queryStr.includes('f=avif')) return 'AVIF';
+        for (const { fmt, exts } of IMAGE_EXT_MAP) {
+            const lowerFmt = fmt.toLowerCase();
+            if (exts.some(ext => cleanUrl.endsWith(ext)) ||
+                queryStr.includes(`format=${lowerFmt}`) ||
+                queryStr.includes(`f=${lowerFmt}`)) {
+                return fmt;
+            }
+        }
         return 'JPG';
     }
 
-    // 动态刷新卡片上的真实格式标签
+    // 动态刷新图片卡片上的真实格式标签
     function updateCardFormatDisplay(item) {
         const cards = shadow.querySelectorAll('.img-card');
         cards.forEach(card => {
             if (card.dataset.url === item.url) {
-                const badge = card.querySelector('.img-format-badge');
-                if (badge) badge.textContent = item.format;
+                const badge = card.querySelector('.media-format-badge');
+                if (badge) {
+                    badge.textContent = item.format;
+                }
             }
         });
     }
 
-    // 将图片添加到全局存储并异步获取其真实分辨率
+    // 注册图片对象到全局存储集合
     function registerImage(rawUrl, source = 'DOM') {
         const url = normalizeUrl(rawUrl);
-        if (!url || url.length < 5) return;
-        if (url.startsWith('data:image/') && url.length < 150) return;
-        if (imageStore.has(url)) return;
+        if (!url || url.length < 5) {
+            return;
+        }
+        if (url.startsWith('data:image/') && url.length < 150) {
+            return;
+        }
+        if (imageStore.has(url)) {
+            return;
+        }
 
-        const format = detectFormat(url);
-        if (format && !knownFormats.has(format)) {
-            knownFormats.add(format);
-            activeFormatFilters.add(format);
+        const format = detectImageFormat(url);
+        if (!knownImageFormats.has(format)) {
+            knownImageFormats.add(format);
+            activeImageFormatFilters.add(format);
         }
 
         const imgObj = {
@@ -226,7 +565,7 @@
             }
             imgObj.loaded = true;
             updateFloatingBadge();
-            if (isModalOpen && enableDeduplication) {
+            if (isModalOpen && currentTab === 'IMAGE' && enableDeduplication) {
                 renderGallery();
             }
         };
@@ -236,19 +575,21 @@
         };
         tempImg.src = url;
 
-        // 异步计算二进制指纹以实现跨域无障碍百分百精准去重与格式矫正
+        // 异步计算二进制指纹以实现去重与格式矫正
         fetchBinaryFingerprint(url).then(info => {
             if (info.format && info.format !== imgObj.format) {
                 imgObj.format = info.format;
-                if (!knownFormats.has(info.format)) {
-                    knownFormats.add(info.format);
-                    activeFormatFilters.add(info.format);
+                if (!knownImageFormats.has(info.format)) {
+                    knownImageFormats.add(info.format);
+                    activeImageFormatFilters.add(info.format);
                 }
-                if (isModalOpen) updateCardFormatDisplay(imgObj);
+                if (isModalOpen && currentTab === 'IMAGE') {
+                    updateCardFormatDisplay(imgObj);
+                }
             }
             if (info.hash) {
                 imgObj.hash = info.hash;
-                if (isModalOpen && enableDeduplication) {
+                if (isModalOpen && currentTab === 'IMAGE' && enableDeduplication) {
                     renderGallery();
                 }
             }
@@ -258,7 +599,6 @@
 
     // 深度扫描当前文档中的所有图片元素
     function scanPageImages() {
-        // 扫描标准图片标签及其懒加载常用属性
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
             const possibleAttrs = [
@@ -272,7 +612,9 @@
                         const parts = val.split(',');
                         parts.forEach(p => {
                             const u = p.trim().split(/\s+/)[0];
-                            if (u) registerImage(u, 'IMG-SRCSET');
+                            if (u) {
+                                registerImage(u, 'IMG-SRCSET');
+                            }
                         });
                     } else {
                         registerImage(val, 'IMG');
@@ -304,40 +646,87 @@
                     const dataUrl = cvs.toDataURL('image/png');
                     registerImage(dataUrl, 'CANVAS');
                 }
-            } catch (e) {}
+            } catch (e) { }
         });
 
         updateFloatingBadge();
     }
 
-    // 挂载动态观察器实时捕获瀑布流滚动加载的新图片
+    // 深度扫描当前文档中的所有音频标签与自定义播放器属性
+    function scanPageAudios() {
+        const audioElements = document.querySelectorAll('audio, audio source');
+        audioElements.forEach(el => {
+            const src = el.getAttribute('src') || el.currentSrc;
+            if (src) {
+                registerAudio(src, 'DOM_AUDIO');
+            }
+        });
+
+        const customNodes = document.querySelectorAll('[data-audio], [data-mp3], [data-sound], [data-url], [data-src]');
+        customNodes.forEach(node => {
+            ['data-audio', 'data-mp3', 'data-sound', 'data-url', 'data-src'].forEach(attr => {
+                const val = node.getAttribute(attr);
+                if (val && typeof val === 'string' && AUDIO_EXT_REGEX.test(val)) {
+                    registerAudio(val, 'DOM_DATASET');
+                }
+            });
+        });
+
+        updateFloatingBadge();
+    }
+
+    // 挂载动态观察器实时捕获异步渲染的新媒体元素
     function setupDynamicObserver() {
         let timer = null;
         const observer = new MutationObserver(() => {
             clearTimeout(timer);
-            timer = setTimeout(scanPageImages, 400);
+            timer = setTimeout(() => {
+                scanPageImages();
+                scanPageAudios();
+            }, 400);
         });
-        observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
+        if (document.body) {
+            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
+        } else {
+            document.addEventListener('DOMContentLoaded', () => {
+                if (document.body) {
+                    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
+                }
+            });
+        }
         window.addEventListener('scroll', () => {
             clearTimeout(timer);
-            timer = setTimeout(scanPageImages, 500);
+            timer = setTimeout(() => {
+                scanPageImages();
+                scanPageAudios();
+            }, 500);
         }, { passive: true });
     }
 
-    // 创建独立沙箱节点防止网页既有样式污染扩展界面
+    // 创建独立沙箱节点防止宿主网页既有样式污染
     const container = document.createElement('div');
-    container.id = 'ag-img-sniffer-root';
-    document.documentElement.appendChild(container);
+    container.id = 'ag-media-sniffer-root';
+
+    function attachContainer() {
+        if (!container.parentNode) {
+            (document.body || document.documentElement).appendChild(container);
+        }
+    }
+    if (document.documentElement) {
+        attachContainer();
+    } else {
+        document.addEventListener('DOMContentLoaded', attachContainer);
+    }
+
     const shadow = container.attachShadow({ mode: 'open' });
 
-    // 注入浅色现代化视觉样式表
+    // 注入现代化响应式界面样式表
     const styleEl = document.createElement('style');
     styleEl.textContent = `
         :host, :root {
             --primary: #4f46e5;
             --primary-hover: #4338ca;
-            --bg-glass: rgba(255, 255, 255, 0.95);
-            --card-glass: rgba(255, 255, 255, 0.9);
+            --bg-glass: rgba(255, 255, 255, 0.96);
             --border-glass: rgba(226, 232, 240, 0.9);
             --text-main: #0f172a;
             --text-muted: #64748b;
@@ -435,17 +824,54 @@
             padding: 0 24px;
             flex-shrink: 0;
             box-shadow: 0 1px 4px rgba(0, 0, 0, 0.04);
+            gap: 16px;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            flex-wrap: wrap;
         }
         .header-title {
             display: flex;
             align-items: center;
-            gap: 10px;
-            font-size: 18px;
+            gap: 8px;
+            font-size: 17px;
             font-weight: 700;
             color: var(--text-main);
-            letter-spacing: 0.3px;
         }
         .header-title svg { width: 22px; height: 22px; fill: var(--primary); }
+        
+        /* 模态选项卡 */
+        .tab-switcher {
+            display: inline-flex;
+            background: #e2e8f0;
+            border-radius: 8px;
+            padding: 3px;
+            gap: 2px;
+        }
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-muted);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+        }
+        .tab-btn:hover {
+            color: var(--text-main);
+        }
+        .tab-btn.active {
+            background: #ffffff;
+            color: var(--primary);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
         .header-selected-count {
             font-size: 13px;
             color: var(--text-muted);
@@ -455,7 +881,6 @@
             font-size: 12px;
             color: var(--primary);
             font-weight: 600;
-            margin-left: 4px;
         }
 
         /* 顶部操作区 */
@@ -534,6 +959,7 @@
             display: flex;
             align-items: center;
             gap: 6px;
+            cursor: pointer;
         }
         .filter-checkbox {
             cursor: pointer;
@@ -550,7 +976,7 @@
             color: var(--text-muted);
         }
 
-        /* 瀑布流画廊主体 */
+        /* 媒体画廊主体 */
         .modal-body {
             flex: 1;
             overflow-y: auto;
@@ -561,6 +987,13 @@
             display: grid;
             grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
             gap: 18px;
+        }
+        .audio-list {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            max-width: 1100px;
+            margin: 0 auto;
         }
 
         /* 图片卡片 */
@@ -606,6 +1039,111 @@
             transform: scale(1.05);
         }
 
+        /* 音频卡片条目 */
+        .audio-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            cursor: pointer;
+        }
+        .audio-card:hover {
+            border-color: rgba(79, 70, 229, 0.4);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            transform: translateY(-1px);
+        }
+        .audio-card.selected {
+            border-color: var(--primary);
+            background: #f8faff;
+            box-shadow: 0 0 0 2px var(--primary);
+        }
+        .audio-left {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex: 1;
+            min-width: 0;
+        }
+        .audio-icon-box {
+            width: 42px;
+            height: 42px;
+            border-radius: 10px;
+            background: linear-gradient(135deg, #e0e7ff, #ede9fe);
+            color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .audio-icon-box svg { width: 22px; height: 22px; fill: currentColor; }
+        .audio-info {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            min-width: 0;
+            flex: 1;
+        }
+        .audio-name {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-main);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .audio-meta-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+        .audio-right {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+            flex-shrink: 0;
+        }
+        .audio-player-wrapper {
+            display: flex;
+            align-items: center;
+        }
+        .audio-player-wrapper audio {
+            height: 34px;
+            outline: none;
+        }
+
+        /* 选中标记框 */
+        .select-checkbox-box {
+            width: 20px;
+            height: 20px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            transition: all 0.2s;
+        }
+        .selected .select-checkbox-box {
+            background: var(--primary);
+            border-color: var(--primary);
+        }
+        .select-check-svg {
+            display: none;
+            width: 14px;
+            height: 14px;
+            fill: #fff;
+        }
+        .selected .select-check-svg { display: block; }
+
         /* 卡片上层标签与勾选器 */
         .img-select-overlay {
             position: absolute;
@@ -634,7 +1172,7 @@
         }
         .img-card.selected .img-select-check { display: block; }
 
-        .img-format-badge {
+        .media-format-badge {
             position: absolute;
             top: 8px;
             right: 8px;
@@ -647,6 +1185,16 @@
             border-radius: 6px;
             text-transform: uppercase;
             box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+        }
+        .audio-format-badge {
+            background: #e0f2fe;
+            color: #0284c7;
+            border: 1px solid #bae6fd;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 6px;
+            text-transform: uppercase;
         }
 
         /* 卡片底部信息条 */
@@ -664,13 +1212,20 @@
             font-family: monospace;
         }
 
+        .gallery-empty {
+            text-align: center;
+            padding: 60px 20px;
+            color: var(--text-muted);
+            font-size: 15px;
+        }
+
         /* 进度提示浮层 */
         .toast-notify {
             position: fixed;
             bottom: 30px;
             left: 50%;
             transform: translateX(-50%);
-            background: rgba(15, 23, 42, 0.9);
+            background: rgba(15, 23, 42, 0.92);
             color: #fff;
             padding: 10px 20px;
             border-radius: 10px;
@@ -687,7 +1242,7 @@
     `;
     shadow.appendChild(styleEl);
 
-    // 构建界面 DOM 结构
+    // 构建界面悬浮球与弹窗节点
     const fab = document.createElement('div');
     fab.className = 'fab-trigger';
     fab.title = '打开媒体嗅探器';
@@ -703,10 +1258,16 @@
     modal.className = 'modal-overlay';
     modal.innerHTML = `
         <div class="modal-header">
-            <div class="header-title">
-                <svg viewBox="0 0 24 24"><path d="M12 15c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0-8c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0-4C6.48 3 2 7.48 2 13c0 3.7 2.01 6.92 4.99 8.65l1.35-2.32C6.16 18.02 5 15.65 5 13c0-3.87 3.13-7 7-7s7 3.13 7 7c0 2.65-1.16 5.02-3.34 6.33l1.35 2.32C20 19.92 22 16.7 22 13c0-5.52-4.48-10-10-10z"/></svg>
-                <span>媒体嗅探器</span>
-                <span id="ag-selected-count" class="header-selected-count">(已选中 0 张)</span>
+            <div class="header-left">
+                <div class="header-title">
+                    <svg viewBox="0 0 24 24"><path d="M12 15c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0-8c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0-4C6.48 3 2 7.48 2 13c0 3.7 2.01 6.92 4.99 8.65l1.35-2.32C6.16 18.02 5 15.65 5 13c0-3.87 3.13-7 7-7s7 3.13 7 7c0 2.65-1.16 5.02-3.34 6.33l1.35 2.32C20 19.92 22 16.7 22 13c0-5.52-4.48-10-10-10z"/></svg>
+                    <span>媒体嗅探器</span>
+                </div>
+                <div class="tab-switcher">
+                    <button class="tab-btn active" id="ag-tab-img" data-tab="IMAGE">图片 (0)</button>
+                    <button class="tab-btn" id="ag-tab-audio" data-tab="AUDIO">音频 (0)</button>
+                </div>
+                <span id="ag-selected-count" class="header-selected-count">(已选中 0 项)</span>
                 <span id="ag-dedup-stat" class="header-dedup-stat"></span>
             </div>
             <div class="header-actions">
@@ -723,7 +1284,7 @@
         <div class="filter-bar">
             <div class="filter-group">
                 <div class="filter-format-container" id="ag-format-checkboxes"></div>
-                <label class="filter-item filter-dedup-label"><input type="checkbox" id="ag-filter-dedup" checked> 智能去重</label>
+                <label class="filter-item filter-dedup-label" id="ag-dedup-label-wrap"><input type="checkbox" id="ag-filter-dedup" class="filter-checkbox" checked> 智能去重</label>
             </div>
         </div>
 
@@ -743,65 +1304,129 @@
         setTimeout(() => toast.classList.remove('active'), duration);
     }
 
+    // 统一刷新悬浮球角标数量统计
     function updateFloatingBadge() {
         const badge = shadow.getElementById('ag-badge');
         if (badge) {
-            badge.textContent = String(getFilteredImages().length);
+            const filteredImg = getFilteredImages().length;
+            const filteredAudio = getFilteredAudios().length;
+            const total = filteredImg + filteredAudio;
+            badge.textContent = String(total);
         }
     }
 
-    // 动态统计当前页面存在的所有格式并更新筛选复选框
+    // 刷新弹窗头部选项卡数量与选中计数
+    function updateModalHeaderCounters() {
+        const tabImg = shadow.getElementById('ag-tab-img');
+        const tabAudio = shadow.getElementById('ag-tab-audio');
+        const countSpan = shadow.getElementById('ag-selected-count');
+
+        if (tabImg) {
+            tabImg.textContent = `图片 (${getFilteredImages().length})`;
+        }
+        if (tabAudio) {
+            tabAudio.textContent = `音频 (${getFilteredAudios().length})`;
+        }
+
+        const selectedSet = currentTab === 'IMAGE' ? selectedImages : selectedAudios;
+        if (countSpan) {
+            countSpan.textContent = `(已选中 ${selectedSet.size} 项)`;
+        }
+
+        const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
+        if (toggleBtn) {
+            const activeList = currentTab === 'IMAGE' ? getFilteredImages() : getFilteredAudios();
+            const isAll = activeList.length > 0 && activeList.every(i => selectedSet.has(i.url));
+            toggleBtn.textContent = isAll ? '取消全选' : '全选';
+        }
+    }
+
+    // 动态统计当前模态下的格式并渲染筛选复选框
     function renderFormatFilters() {
         const container = shadow.getElementById('ag-format-checkboxes');
-        if (!container) return;
-
-        const formatCounts = new Map();
-        imageStore.forEach(item => {
-            const fmt = item.format || 'OTHER';
-            formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
-        });
-
-        if (formatCounts.size === 0) {
-            container.innerHTML = '<span class="format-count">暂无格式</span>';
+        const dedupWrap = shadow.getElementById('ag-dedup-label-wrap');
+        if (!container) {
             return;
         }
 
-        formatCounts.forEach((_, fmt) => {
-            if (!knownFormats.has(fmt)) {
-                knownFormats.add(fmt);
-                activeFormatFilters.add(fmt);
+        if (currentTab === 'IMAGE') {
+            if (dedupWrap) {
+                dedupWrap.style.display = 'inline-flex';
             }
-        });
-
-        let html = '';
-        formatCounts.forEach((count, fmt) => {
-            const isChecked = activeFormatFilters.has(fmt) ? 'checked' : '';
-            html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
-        });
-        container.innerHTML = html;
-
-        container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
-            cb.addEventListener('change', () => {
-                if (cb.checked) {
-                    activeFormatFilters.add(cb.value);
-                } else {
-                    activeFormatFilters.delete(cb.value);
-                }
-                renderGallery();
+            const formatCounts = new Map();
+            imageStore.forEach(item => {
+                const fmt = item.format || 'OTHER';
+                formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-        });
+
+            if (formatCounts.size === 0) {
+                container.innerHTML = '<span class="format-count">暂无图片格式</span>';
+                return;
+            }
+
+            let html = '';
+            formatCounts.forEach((count, fmt) => {
+                const isChecked = activeImageFormatFilters.has(fmt) ? 'checked' : '';
+                html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
+            });
+            container.innerHTML = html;
+
+            container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        activeImageFormatFilters.add(cb.value);
+                    } else {
+                        activeImageFormatFilters.delete(cb.value);
+                    }
+                    renderGallery();
+                });
+            });
+        } else {
+            if (dedupWrap) {
+                dedupWrap.style.display = 'none';
+            }
+            const formatCounts = new Map();
+            audioStore.forEach(item => {
+                const fmt = item.format || 'AUDIO';
+                formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
+            });
+
+            if (formatCounts.size === 0) {
+                container.innerHTML = '<span class="format-count">暂无音频格式</span>';
+                return;
+            }
+
+            let html = '';
+            formatCounts.forEach((count, fmt) => {
+                const isChecked = activeAudioFormatFilters.has(fmt) ? 'checked' : '';
+                html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
+            });
+            container.innerHTML = html;
+
+            container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
+                cb.addEventListener('change', () => {
+                    if (cb.checked) {
+                        activeAudioFormatFilters.add(cb.value);
+                    } else {
+                        activeAudioFormatFilters.delete(cb.value);
+                    }
+                    renderGallery();
+                });
+            });
+        }
     }
 
-    // 获取经过多维筛选条件过滤后的图片列表
+    // 获取经过筛选过滤后的图片列表
     function getFilteredImages() {
         const result = [];
         const seenHashes = new Set();
         let dupCount = 0;
 
         imageStore.forEach(item => {
-            if (knownFormats.has(item.format) && !activeFormatFilters.has(item.format)) return;
+            if (knownImageFormats.has(item.format) && !activeImageFormatFilters.has(item.format)) {
+                return;
+            }
 
-            // 智能去重过滤逻辑
             if (enableDeduplication && item.hash) {
                 if (seenHashes.has(item.hash)) {
                     dupCount++;
@@ -817,131 +1442,222 @@
         return result;
     }
 
+    // 获取经过筛选过滤后的音频列表
+    function getFilteredAudios() {
+        const result = [];
+        audioStore.forEach(item => {
+            if (knownAudioFormats.has(item.format) && !activeAudioFormatFilters.has(item.format)) {
+                return;
+            }
+            result.push(item);
+        });
+        return result;
+    }
+
     // 更新去重统计信息文字显示
     function updateDeduplicationStat(dupCount) {
         const el = shadow.getElementById('ag-dedup-stat');
         if (el) {
-            el.textContent = (enableDeduplication && dupCount > 0) ? `(已智能去重 ${dupCount} 张)` : '';
+            if (currentTab === 'IMAGE' && enableDeduplication && dupCount > 0) {
+                el.textContent = `(已智能去重 ${dupCount} 张)`;
+            } else {
+                el.textContent = '';
+            }
         }
     }
 
-    // 渲染图片网格画廊列表
+    // 渲染当前选项卡下的媒体画廊或音频列表
     function renderGallery() {
         renderFormatFilters();
         const gallery = shadow.getElementById('ag-gallery');
-        if (!gallery) return;
-
-        const filtered = getFilteredImages();
-        gallery.innerHTML = '';
-
-        if (filtered.length === 0) {
-            gallery.innerHTML = '<div class="gallery-empty">当前筛选条件下没有匹配的图片</div>';
+        if (!gallery) {
             return;
         }
 
-        filtered.forEach(item => {
-            const card = document.createElement('div');
-            card.dataset.url = item.url;
-            card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
-            
-            const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
-            
-            card.innerHTML = `
-                <div class="img-thumb-wrapper">
-                    <img class="img-thumb" src="${item.url}" alt="thumb" loading="lazy">
-                    <div class="img-select-overlay">
-                        <svg class="img-select-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+        if (currentTab === 'IMAGE') {
+            gallery.className = 'gallery-grid';
+            const filtered = getFilteredImages();
+            gallery.innerHTML = '';
+
+            if (filtered.length === 0) {
+                gallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
+                updateModalHeaderCounters();
+                return;
+            }
+
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.dataset.url = item.url;
+                card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
+
+                const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
+
+                card.innerHTML = `
+                    <div class="img-thumb-wrapper">
+                        <img class="img-thumb" src="${item.url}" alt="thumb" loading="lazy">
+                        <div class="img-select-overlay">
+                            <svg class="img-select-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                        </div>
+                        <span class="media-format-badge">${item.format}</span>
                     </div>
-                    <span class="img-format-badge">${item.format}</span>
-                </div>
-                <div class="img-meta">
-                    <span class="img-dim">${dimText}</span>
-                </div>
-            `;
+                    <div class="img-meta">
+                        <span class="img-dim">${dimText}</span>
+                    </div>
+                `;
 
-            // 当缩略图加载就绪时直接提取真实宽高与指纹并就地刷新显示
-            const imgEl = card.querySelector('.img-thumb');
-            const dimSpan = card.querySelector('.img-dim');
-            function onThumbLoad() {
-                if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
-                    item.width = imgEl.naturalWidth;
-                    item.height = imgEl.naturalHeight;
-                    if (!item.hash) {
-                        item.hash = calculateDHash(imgEl);
+                const imgEl = card.querySelector('.img-thumb');
+                const dimSpan = card.querySelector('.img-dim');
+                function onThumbLoad() {
+                    if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
+                        item.width = imgEl.naturalWidth;
+                        item.height = imgEl.naturalHeight;
+                        if (!item.hash) {
+                            item.hash = calculateDHash(imgEl);
+                        }
+                        if (dimSpan) {
+                            dimSpan.textContent = `${item.width} × ${item.height}`;
+                        }
                     }
-                    if (dimSpan) dimSpan.textContent = `${item.width} × ${item.height}`;
                 }
-            }
-            if (imgEl && imgEl.complete && imgEl.naturalWidth) {
-                onThumbLoad();
-            } else if (imgEl) {
-                imgEl.addEventListener('load', onThumbLoad);
-            }
+                if (imgEl && imgEl.complete && imgEl.naturalWidth) {
+                    onThumbLoad();
+                } else if (imgEl) {
+                    imgEl.addEventListener('load', onThumbLoad);
+                }
 
-            // 点击卡片切换选中状态
-            card.addEventListener('click', () => {
-                if (selectedImages.has(item.url)) {
-                    selectedImages.delete(item.url);
-                    card.classList.remove('selected');
-                } else {
-                    selectedImages.add(item.url);
-                    card.classList.add('selected');
-                }
-                updateSelectedCount();
+                card.addEventListener('click', () => {
+                    if (selectedImages.has(item.url)) {
+                        selectedImages.delete(item.url);
+                        card.classList.remove('selected');
+                    } else {
+                        selectedImages.add(item.url);
+                        card.classList.add('selected');
+                    }
+                    updateModalHeaderCounters();
+                });
+
+                gallery.appendChild(card);
             });
+        } else {
+            gallery.className = 'audio-list';
+            const filtered = getFilteredAudios();
+            gallery.innerHTML = '';
 
-            gallery.appendChild(card);
-        });
+            if (filtered.length === 0) {
+                gallery.innerHTML = '<div class="gallery-empty">当前未发现音频资源</div>';
+                updateModalHeaderCounters();
+                return;
+            }
 
-        updateSelectedCount();
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.dataset.url = item.url;
+                card.className = 'audio-card' + (selectedAudios.has(item.url) ? ' selected' : '');
+
+                const sizeStr = formatBytes(item.size);
+
+                card.innerHTML = `
+                    <div class="audio-left">
+                        <div class="select-checkbox-box">
+                            <svg class="select-check-svg" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                        </div>
+                        <div class="audio-icon-box">
+                            <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                        </div>
+                        <div class="audio-info">
+                            <div class="audio-name" title="${item.name}">${item.name}</div>
+                            <div class="audio-meta-row">
+                                <span class="audio-format-badge">${item.format}</span>
+                                ${sizeStr ? `<span>${sizeStr}</span>` : ''}
+                                <span>来源: ${item.source}</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="audio-right">
+                        <div class="audio-player-wrapper">
+                            <audio controls preload="none" src="${item.url}"></audio>
+                        </div>
+                    </div>
+                `;
+
+                // 阻止播放器控件点击触发整行选择
+                const audioPlayer = card.querySelector('audio');
+                if (audioPlayer) {
+                    audioPlayer.addEventListener('click', (e) => e.stopPropagation());
+                }
+
+                card.addEventListener('click', () => {
+                    if (selectedAudios.has(item.url)) {
+                        selectedAudios.delete(item.url);
+                        card.classList.remove('selected');
+                    } else {
+                        selectedAudios.add(item.url);
+                        card.classList.add('selected');
+                    }
+                    updateModalHeaderCounters();
+                });
+
+                gallery.appendChild(card);
+            });
+        }
+
+        updateModalHeaderCounters();
         updateFloatingBadge();
     }
 
-    function updateSelectedCount() {
-        const el = shadow.getElementById('ag-selected-count');
-        if (el) el.textContent = `(已选中 ${selectedImages.size} 张)`;
-
-        const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
-        if (toggleBtn) {
-            const filtered = getFilteredImages();
-            const isAllSelected = filtered.length > 0 && filtered.every(item => selectedImages.has(item.url));
-            toggleBtn.textContent = isAllSelected ? '取消全选' : '全选';
-        }
-    }
-
-    // 单张图片原生极速下载
-    function downloadSingleImage(item) {
-        const fileName = `image_${Date.now()}.${item.format.toLowerCase()}`;
-        if (typeof GM_download === 'function' && !item.url.startsWith('data:')) {
-            GM_download({
-                url: item.hdUrl || item.url,
-                name: fileName,
-                saveAs: false
-            });
-        } else {
-            const a = document.createElement('a');
-            a.href = item.url;
-            a.download = fileName;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        }
-        showToast('已开始下载单张图片');
-    }
-
-    // 逐张下载选中的图片到本地设备
-    function downloadSelectedDirectly() {
-        if (selectedImages.size === 0) {
-            showToast('请先勾选需要下载的图片');
+    // 单个媒体文件原生下载
+    function downloadSingleItem(url, name, ext) {
+        const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
+        if (url.startsWith('data:')) {
+            triggerAnchorDownload(url, fileName);
             return;
         }
-        const list = Array.from(selectedImages);
-        showToast(`已开始下载 ${list.length} 张图片`);
+        // 先用GM_xmlhttpRequest携带Cookie拉取并校验响应状态再保存
+        if (typeof GM_xmlhttpRequest === 'function') {
+            GM_xmlhttpRequest({
+                method: 'GET',
+                url: url,
+                responseType: 'blob',
+                headers: { 'Referer': window.location.href },
+                cookie: document.cookie,
+                onload: (res) => {
+                    if (res.status >= 200 && res.status < 300) {
+                        triggerAnchorDownload(URL.createObjectURL(res.response), fileName);
+                    } else {
+                        showToast(`下载失败：服务器返回 ${res.status}，该链接可能需要登录或已过期`);
+                    }
+                },
+                onerror: () => showToast(`下载失败：网络错误，请检查链接是否有效`)
+            });
+        } else if (typeof GM_download === 'function') {
+            GM_download({ url: url, name: fileName, saveAs: false });
+        } else {
+            triggerAnchorDownload(url, fileName);
+        }
+    }
+
+    // 逐个下载选中的媒体文件
+    function downloadSelectedDirectly() {
+        const isImg = currentTab === 'IMAGE';
+        const selectedSet = isImg ? selectedImages : selectedAudios;
+        if (selectedSet.size === 0) {
+            showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
+            return;
+        }
+
+        const list = Array.from(selectedSet);
+        showToast(`已开始下载 ${list.length} 个${isImg ? '图片' : '音频'}文件`);
+
         list.forEach((url, idx) => {
             setTimeout(() => {
-                const item = imageStore.get(url) || { url: url, format: detectFormat(url) };
-                downloadSingleImage(item);
-            }, idx * 200);
+                if (isImg) {
+                    const item = imageStore.get(url);
+                    downloadSingleItem(item.hdUrl || item.url, `image_${idx + 1}.${(item.format || 'jpg').toLowerCase()}`, item.format || 'jpg');
+                } else {
+                    const item = audioStore.get(url);
+                    downloadSingleItem(item.url, item.name, item.format || 'mp3');
+                }
+            }, idx * 220);
         });
     }
 
@@ -951,13 +1667,12 @@
             if (url.startsWith('data:')) {
                 const parts = url.split(',');
                 const byteString = atob(parts[1]);
-                const mimeString = parts[0].split(':')[1].split(';')[0];
                 const ab = new ArrayBuffer(byteString.length);
                 const ia = new Uint8Array(ab);
                 for (let i = 0; i < byteString.length; i++) {
                     ia[i] = byteString.charCodeAt(i);
                 }
-                resolve({ data: ab, format: mimeString.split('/')[1] || 'png' });
+                resolve({ data: ab });
                 return;
             }
 
@@ -969,7 +1684,7 @@
                     headers: { 'Referer': window.location.href },
                     onload: (res) => {
                         if (res.status >= 200 && res.status < 300) {
-                            resolve({ data: res.response, format: detectFormat(url) });
+                            resolve({ data: res.response });
                         } else {
                             reject(new Error('HTTP status ' + res.status));
                         }
@@ -979,7 +1694,7 @@
             } else {
                 fetch(url)
                     .then(res => res.arrayBuffer())
-                    .then(ab => resolve({ data: ab, format: detectFormat(url) }))
+                    .then(ab => resolve({ data: ab }))
                     .catch(reject);
             }
         });
@@ -996,17 +1711,16 @@
         crc32Table[i] = c;
     }
 
-    // 计算二进制数据的 CRC32 校验值
+    // 计算二进制数据的校验值
     function calculateCrc32(bytes) {
         let crc = ~0 >>> 0;
         for (let i = 0; i < bytes.length; i++) {
-            // noinspection JSBitwiseOperatorUsage
             crc = crc32Table[(crc ^ bytes[i]) & 255] ^ (crc >>> 8);
         }
         return (~crc) >>> 0;
     }
 
-    // 原生轻量零依赖 ZIP 打包引擎
+    // 原生零依赖压缩包生成引擎
     function createZipArchive(files) {
         const encoder = new TextEncoder();
         const parts = [];
@@ -1019,7 +1733,6 @@
             const crc = calculateCrc32(dataBytes);
             const size = dataBytes.length;
 
-            // 写入局部文件头结构
             const localHeader = new Uint8Array(30 + nameBytes.length);
             const view = new DataView(localHeader.buffer);
             view.setUint32(0, 67324752, true);
@@ -1038,7 +1751,6 @@
             parts.push(localHeader);
             parts.push(dataBytes);
 
-            // 写入中心目录记录结构
             const centralEntry = new Uint8Array(46 + nameBytes.length);
             const cView = new DataView(centralEntry.buffer);
             cView.setUint32(0, 33639248, true);
@@ -1071,7 +1783,6 @@
             centralDirSize += entry.length;
         }
 
-        // 写入中心目录结尾结构
         const endRecord = new Uint8Array(22);
         const endView = new DataView(endRecord.buffer);
         endView.setUint32(0, 101010256, true);
@@ -1084,9 +1795,10 @@
         endView.setUint16(20, 0, true);
         parts.push(endRecord);
 
-        // 合并生成完整 ZIP 二进制数据流
         let totalLen = 0;
-        for (const p of parts) totalLen += p.length;
+        for (const p of parts) {
+            totalLen += p.length;
+        }
         const result = new Uint8Array(totalLen);
         let cur = 0;
         for (const p of parts) {
@@ -1096,71 +1808,67 @@
         return result;
     }
 
-    // 将选中的全部图片打包为 ZIP 压缩包下载
+    // 将选中的全部图片或音频打包为压缩包下载
     async function downloadSelectedAsZip() {
-        if (selectedImages.size === 0) {
-            showToast('请先勾选需要下载的图片');
+        const isImg = currentTab === 'IMAGE';
+        const selectedSet = isImg ? selectedImages : selectedAudios;
+        if (selectedSet.size === 0) {
+            showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
             return;
         }
 
-        console.log('[媒体嗅探器] 开始执行打包任务，选中图片数:', selectedImages.size);
-
-        const selectedList = Array.from(selectedImages);
+        const selectedList = Array.from(selectedSet);
         const filesToZip = [];
         let successCount = 0;
 
-        showToast(`正在下载并打包 0/${selectedList.length} 张图片请稍候...`, 60000);
+        showToast(`正在下载并打包 0/${selectedList.length} 个文件请稍候...`, 60000);
 
         const tasks = selectedList.map(async (url, idx) => {
             try {
-                const item = imageStore.get(url);
-                const targetUrl = (item && item.hdUrl) ? item.hdUrl : url;
-                console.log(`[媒体嗅探器] 正在抓取第 ${idx + 1} 张图片:`, targetUrl);
+                let targetUrl;
+                let fileName;
+                if (isImg) {
+                    const item = imageStore.get(url);
+                    targetUrl = (item && item.hdUrl) ? item.hdUrl : url;
+                    const realExt = (item && item.format ? item.format : 'jpg').toLowerCase();
+                    const padIndex = String(idx + 1).padStart(3, '0');
+                    fileName = `images/img_${padIndex}.${realExt}`;
+                } else {
+                    const item = audioStore.get(url);
+                    targetUrl = url;
+                    const rawName = item?.name || extractFileName(url, `audio_${idx + 1}.mp3`);
+                    fileName = `audios/${rawName}`;
+                }
+
                 const binary = await fetchBinary(targetUrl);
-                const realExt = (item && item.format ? item.format : binary.format).toLowerCase();
-                const padIndex = String(idx + 1).padStart(3, '0');
                 const rawBytes = new Uint8Array(binary.data);
-                filesToZip.push({ name: `images/img_${padIndex}.${realExt}`, data: rawBytes });
+                filesToZip.push({ name: fileName, data: rawBytes });
                 successCount++;
-                console.log(`[媒体嗅探器] 第 ${idx + 1} 张图片拉取成功，大小:`, rawBytes.byteLength);
-                showToast(`已成功获取 ${successCount}/${selectedList.length} 张图片...`, 60000);
-            } catch (e) {
-                console.error(`[媒体嗅探器] 第 ${idx + 1} 张图片拉取失败:`, url, e);
-            }
+                showToast(`已成功获取 ${successCount}/${selectedList.length} 个文件...`, 60000);
+            } catch (e) { }
         });
 
         await Promise.all(tasks);
 
         if (filesToZip.length === 0) {
-            console.error('[媒体嗅探器] 所有选中的图片均拉取失败，中止打包');
-            showToast('图片资源拉取失败无法打包');
+            showToast('资源拉取失败无法打包');
             return;
         }
 
         showToast('正在生成压缩文件请稍候...');
-        console.log('[媒体嗅探器] 正在即时生成 ZIP 文件流...');
         const zipBytes = createZipArchive(filesToZip);
         const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
-        console.log('[媒体嗅探器] ZIP 文件生成完毕，大小:', zipBlob.size, '字节');
-        
-        const zipFileName = `images_pack_${Date.now()}.zip`;
+        const zipFileName = `${isImg ? 'images' : 'audios'}_pack_${Date.now()}.zip`;
         const blobUrl = URL.createObjectURL(zipBlob);
 
-        // 优先使用油猴扩展特权下载接口以规避浏览器异步手势失效拦截
         if (typeof GM_download === 'function') {
             try {
                 GM_download({
                     url: blobUrl,
                     name: zipFileName,
                     saveAs: false,
-                    onload: () => {
-                        console.log('[媒体嗅探器] GM_download 下载完成');
-                        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
-                    },
-                    onerror: () => {
-                        console.warn('[媒体嗅探器] GM_download 触发异常，回退原生链接触发');
-                        triggerAnchorDownload(blobUrl, zipFileName);
-                    }
+                    onload: () => setTimeout(() => URL.revokeObjectURL(blobUrl), 30000),
+                    onerror: () => triggerAnchorDownload(blobUrl, zipFileName)
                 });
             } catch (e) {
                 triggerAnchorDownload(blobUrl, zipFileName);
@@ -1169,7 +1877,7 @@
             triggerAnchorDownload(blobUrl, zipFileName);
         }
 
-        showToast(`成功打包下载 ${successCount} 张图片！`);
+        showToast(`成功打包下载 ${successCount} 个文件！`);
     }
 
     // 触发原生锚点标签下载
@@ -1181,7 +1889,6 @@
         downloadLink.click();
         document.body.removeChild(downloadLink);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
-        console.log('[媒体嗅探器] 已触发原生链接下载');
     }
 
     // 实现悬浮球的平滑拖拽与防误触点击
@@ -1206,7 +1913,9 @@
     }
 
     function onPointerMove(e) {
-        if (!isDragging) return;
+        if (!isDragging) {
+            return;
+        }
         const dx = e.clientX - dragStartX;
         const dy = e.clientY - dragStartY;
 
@@ -1226,7 +1935,9 @@
     }
 
     function onPointerUp() {
-        if (!isDragging) return;
+        if (!isDragging) {
+            return;
+        }
         isDragging = false;
         fab.classList.remove('dragging');
         window.removeEventListener('pointermove', onPointerMove);
@@ -1263,40 +1974,72 @@
         }
         isModalOpen = true;
         modal.classList.add('active');
+        fab.style.display = 'none';
         scanPageImages();
+        scanPageAudios();
         renderGallery();
     });
+
+    // 选项卡切换事件
+    const tabImgBtn = shadow.getElementById('ag-tab-img');
+    const tabAudioBtn = shadow.getElementById('ag-tab-audio');
+
+    if (tabImgBtn) {
+        tabImgBtn.addEventListener('click', () => {
+            currentTab = 'IMAGE';
+            tabImgBtn.classList.add('active');
+            tabAudioBtn.classList.remove('active');
+            renderGallery();
+        });
+    }
+
+    if (tabAudioBtn) {
+        tabAudioBtn.addEventListener('click', () => {
+            currentTab = 'AUDIO';
+            tabAudioBtn.classList.add('active');
+            tabImgBtn.classList.remove('active');
+            renderGallery();
+        });
+    }
 
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         isModalOpen = false;
         modal.classList.remove('active');
+        fab.style.display = '';
     });
 
     shadow.getElementById('ag-btn-toggle-select').addEventListener('click', () => {
-        const filtered = getFilteredImages();
-        if (filtered.length === 0) return;
-        const isAllSelected = filtered.every(item => selectedImages.has(item.url));
+        const isImg = currentTab === 'IMAGE';
+        const filtered = isImg ? getFilteredImages() : getFilteredAudios();
+        const selectedSet = isImg ? selectedImages : selectedAudios;
+        if (filtered.length === 0) {
+            return;
+        }
+
+        const isAllSelected = filtered.every(item => selectedSet.has(item.url));
         if (isAllSelected) {
-            filtered.forEach(item => selectedImages.delete(item.url));
+            filtered.forEach(item => selectedSet.delete(item.url));
         } else {
-            filtered.forEach(item => selectedImages.add(item.url));
+            filtered.forEach(item => selectedSet.add(item.url));
         }
         renderGallery();
     });
 
     shadow.getElementById('ag-btn-copy-links').addEventListener('click', () => {
-        if (selectedImages.size === 0) {
-            showToast('请先勾选需要复制的图片');
+        const isImg = currentTab === 'IMAGE';
+        const selectedSet = isImg ? selectedImages : selectedAudios;
+        if (selectedSet.size === 0) {
+            showToast(`请先勾选需要复制的${isImg ? '图片' : '音频'}`);
             return;
         }
-        const list = Array.from(selectedImages);
+        const list = Array.from(selectedSet);
         const text = list.join('\n');
         if (typeof GM_setClipboard === 'function') {
             GM_setClipboard(text);
         } else if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).catch(() => {});
+            navigator.clipboard.writeText(text).catch(() => { });
         }
-        showToast(`已复制 ${list.length} 条图片链接到剪贴板`);
+        showToast(`已复制 ${list.length} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);
@@ -1311,7 +2054,15 @@
     }
 
     // 初始启动扫描与动态监听
-    setTimeout(scanPageImages, 800);
-    setupDynamicObserver();
+    function init() {
+        scanPageImages();
+        scanPageAudios();
+        setupDynamicObserver();
+    }
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        setTimeout(init, 300);
+    }
 
 })();

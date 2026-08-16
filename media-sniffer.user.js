@@ -44,6 +44,7 @@
     let activeImageFormatFilters = new Set();
     let knownAudioFormats = new Set();
     let activeAudioFormatFilters = new Set();
+    let audioSearchKeyword = '';
 
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
@@ -227,14 +228,14 @@
             }
         }
     }
-    
+
     /**
      * 处理AList列表响应
      * 
      * @param json AList列表响应对象
      */
     function handleAListResponse(json) {
-        if (!json || json.code !== 200 || !json.data || !Array.isArray(json.data.content)){
+        if (!json || json.code !== 200 || !json.data || !Array.isArray(json.data.content)) {
             return;
         }
         // 获取当前路径
@@ -312,14 +313,14 @@
                 clone.json().then(data => {
                     if (reqUrl.includes('/api/fs/list')) {
                         handleAListResponse(data);
-                    }
-                    if (reqUrl.includes('/api/fs/get') && data?.data?.['raw_url']) {
+                    } else if (reqUrl.includes('/api/fs/get') && data?.data?.['raw_url']) {
                         registerAudio(data.data['raw_url'], 'ALIST_GET', {
                             name: data.data.name,
                             size: data.data.size
                         });
+                    } else {
+                        deepScanForMedia(data);
                     }
-                    deepScanForMedia(data);
                 }).catch(() => { });
             } else if (contentType.startsWith('audio/')) {
                 registerAudio(reqUrl, 'FETCH_MIME', { mime: contentType });
@@ -341,8 +342,9 @@
                     const data = JSON.parse(this.responseText);
                     if (typeof url === 'string' && url.includes('/api/fs/list')) {
                         handleAListResponse(data);
+                    } else {
+                        deepScanForMedia(data);
                     }
-                    deepScanForMedia(data);
                 } else if (ct.startsWith('audio/')) {
                     registerAudio(url, 'XHR_MIME', { mime: ct });
                 }
@@ -481,12 +483,12 @@
 
     // 图片后缀与查询参数→格式名称映射表（按声明顺序匹配）
     const IMAGE_EXT_MAP = [
-        { fmt: 'PNG', exts: ['.png'] },
-        { fmt: 'JPG', exts: ['.jpg', '.jpeg'] },
-        { fmt: 'WEBP', exts: ['.webp'] },
-        { fmt: 'SVG', exts: ['.svg'] },
-        { fmt: 'GIF', exts: ['.gif'] },
-        { fmt: 'AVIF', exts: ['.avif'] }
+        { fmt: 'PNG', extensions: ['.png'] },
+        { fmt: 'JPG', extensions: ['.jpg', '.jpeg'] },
+        { fmt: 'WEBP', extensions: ['.webp'] },
+        { fmt: 'SVG', extensions: ['.svg'] },
+        { fmt: 'GIF', extensions: ['.gif'] },
+        { fmt: 'AVIF', extensions: ['.avif'] }
     ];
 
     // 根据图片链接推断格式类型
@@ -499,9 +501,9 @@
 
         const cleanUrl = url.split('?')[0].toLowerCase();
         const queryStr = (url.split('?')[1] || '').toLowerCase();
-        for (const { fmt, exts } of IMAGE_EXT_MAP) {
+        for (const { fmt, extensions } of IMAGE_EXT_MAP) {
             const lowerFmt = fmt.toLowerCase();
-            if (exts.some(ext => cleanUrl.endsWith(ext)) ||
+            if (extensions.some(ext => cleanUrl.endsWith(ext)) ||
                 queryStr.includes(`format=${lowerFmt}`) ||
                 queryStr.includes(`f=${lowerFmt}`)) {
                 return fmt;
@@ -976,6 +978,46 @@
             color: var(--text-muted);
         }
 
+        /* 音频搜索框 */
+        .search-wrap {
+            position: relative;
+            display: inline-flex;
+            align-items: center;
+        }
+        .search-icon {
+            position: absolute;
+            left: 9px;
+            width: 15px;
+            height: 15px;
+            fill: var(--text-muted);
+            pointer-events: none;
+        }
+        .search-input {
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            padding: 6px 28px 6px 30px;
+            font-size: 13px;
+            color: var(--text-main);
+            background: #fff;
+            outline: none;
+            width: 200px;
+            transition: border-color 0.2s;
+        }
+        .search-input:focus { border-color: var(--primary); }
+        .search-clear {
+            display: none;
+            position: absolute;
+            right: 6px;
+            width: 16px;
+            height: 16px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            fill: var(--text-muted);
+        }
+        .search-clear:hover { fill: var(--text-main); }
+        .search-wrap.has-value .search-clear { display: inline-flex; }
+
         /* 媒体画廊主体 */
         .modal-body {
             flex: 1;
@@ -1286,6 +1328,11 @@
                 <div class="filter-format-container" id="ag-format-checkboxes"></div>
                 <label class="filter-item filter-dedup-label" id="ag-dedup-label-wrap"><input type="checkbox" id="ag-filter-dedup" class="filter-checkbox" checked> 智能去重</label>
             </div>
+            <span class="search-wrap" id="ag-search-wrap" style="display:none">
+                <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+                <input type="text" id="ag-search-input" class="search-input">
+                <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+            </span>
         </div>
 
         <div class="modal-body">
@@ -1353,6 +1400,8 @@
             if (dedupWrap) {
                 dedupWrap.style.display = 'inline-flex';
             }
+            const searchWrap = shadow.getElementById('ag-search-wrap');
+            if (searchWrap) searchWrap.style.display = 'none';
             const formatCounts = new Map();
             imageStore.forEach(item => {
                 const fmt = item.format || 'OTHER';
@@ -1385,6 +1434,8 @@
             if (dedupWrap) {
                 dedupWrap.style.display = 'none';
             }
+            const searchWrap = shadow.getElementById('ag-search-wrap');
+            if (searchWrap) searchWrap.style.display = 'inline-flex';
             const formatCounts = new Map();
             audioStore.forEach(item => {
                 const fmt = item.format || 'AUDIO';
@@ -1447,6 +1498,9 @@
         const result = [];
         audioStore.forEach(item => {
             if (knownAudioFormats.has(item.format) && !activeAudioFormatFilters.has(item.format)) {
+                return;
+            }
+            if (audioSearchKeyword && !`${item.name} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {
                 return;
             }
             result.push(item);
@@ -2051,6 +2105,26 @@
             enableDeduplication = e.target.checked;
             renderGallery();
         });
+    }
+
+    const searchInput = shadow.getElementById('ag-search-input');
+    if (searchInput) {
+        const searchWrap = shadow.getElementById('ag-search-wrap');
+        const searchClear = shadow.getElementById('ag-search-clear');
+        searchInput.addEventListener('input', () => {
+            audioSearchKeyword = searchInput.value.trim().toLowerCase();
+            searchWrap.classList.toggle('has-value', searchInput.value.length > 0);
+            renderGallery();
+        });
+        if (searchClear) {
+            searchClear.addEventListener('click', () => {
+                searchInput.value = '';
+                audioSearchKeyword = '';
+                searchWrap.classList.remove('has-value');
+                renderGallery();
+                searchInput.focus();
+            });
+        }
     }
 
     // 初始启动扫描与动态监听

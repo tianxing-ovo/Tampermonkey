@@ -49,7 +49,7 @@
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
 
-    // 
+    // 音频MIME类型映射表
     const AUDIO_MIME_MAP = [
         ['mpeg', 'MP3'], ['mp3', 'MP3'],
         ['mp4', 'M4A'], ['m4a', 'M4A'],
@@ -57,13 +57,13 @@
         ['ogg', 'OGG'], ['opus', 'OPUS']
     ];
 
-    // 音频文件后缀→格式名称映射表（按声明顺序匹配）
+    // 音频后缀名映射表
     const AUDIO_EXT_MAP = [
         ['.mp3', 'MP3'], ['.m4a', 'M4A'], ['.flac', 'FLAC'], ['.wav', 'WAV'],
-        ['.aac', 'AAC'], ['.ogg', 'OGG'], ['.opus', 'OPUS'], ['.wma', 'WMA'], ['.weba', 'WEBA']
+        ['.aac', 'AAC'], ['.ogg', 'OGG'], ['.opus', 'OPUS']
     ];
 
-    // 从网络链接或类型推断规范的音频格式名称
+    // 从网络链接或MIME类型推断规范的音频格式名称
     function detectAudioFormat(url, mime = '') {
         if (mime) {
             for (const [keyword, fmt] of AUDIO_MIME_MAP) {

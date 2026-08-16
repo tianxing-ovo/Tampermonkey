@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.1.0
+// @version      1.1.1
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -45,6 +45,7 @@
     let knownAudioFormats = new Set();
     let activeAudioFormatFilters = new Set();
     let audioSearchKeyword = '';
+    let savedBodyOverflow = null;
 
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
@@ -1939,6 +1940,8 @@
         }
         isModalOpen = true;
         modal.classList.add('active');
+        savedBodyOverflow = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
         fab.style.display = 'none';
         scanPageImages();
         scanPageAudios();
@@ -1970,6 +1973,7 @@
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         isModalOpen = false;
         modal.classList.remove('active');
+        document.body.style.overflow = savedBodyOverflow;
         fab.style.display = '';
     });
 

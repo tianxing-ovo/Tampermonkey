@@ -124,7 +124,6 @@
         if (url.startsWith('data:') || url.startsWith('blob:')) {
             return url;
         }
-
         let hdUrl = url;
         hdUrl = hdUrl.replace(/!(small|thumb|preview|middle|large|webp|\d+w|\d+h).*/i, '');
         hdUrl = hdUrl.replace(/@\d+[wh]_\d+[wh].*/i, '');
@@ -168,13 +167,11 @@
             }
             return;
         }
-
         const format = meta.format || detectAudioFormat(url, meta.mime);
         if (format && !knownAudioFormats.has(format)) {
             knownAudioFormats.add(format);
             activeAudioFormatFilters.add(format);
         }
-
         const name = meta.name || extractFileName(url, `audio_${audioStore.size + 1}.${format.toLowerCase()}`);
         const audioObj = {
             url: url,
@@ -185,7 +182,6 @@
             duration: meta.duration || 0,
             addedAt: Date.now()
         };
-
         audioStore.set(url, audioObj);
         updateFloatingBadge();
         if (isModalOpen) {
@@ -498,7 +494,6 @@
                 return fmt;
             }
         }
-
         const cleanUrl = url.split('?')[0].toLowerCase();
         const queryStr = (url.split('?')[1] || '').toLowerCase();
         for (const { fmt, extensions } of IMAGE_EXT_MAP) {
@@ -537,13 +532,11 @@
         if (imageStore.has(url)) {
             return;
         }
-
         const format = detectImageFormat(url);
         if (!knownImageFormats.has(format)) {
             knownImageFormats.add(format);
             activeImageFormatFilters.add(format);
         }
-
         const imgObj = {
             url: url,
             hdUrl: upgradeToHdUrl(url),
@@ -554,9 +547,7 @@
             hash: '',
             loaded: false
         };
-
         imageStore.set(url, imgObj);
-
         // 异步预加载图片以获取真实自然宽高尺寸
         const tempImg = new Image();
         tempImg.onload = function () {
@@ -576,7 +567,6 @@
             updateFloatingBadge();
         };
         tempImg.src = url;
-
         // 异步计算二进制指纹以实现去重与格式矫正
         fetchBinaryFingerprint(url).then(info => {
             if (info.format && info.format !== imgObj.format) {
@@ -624,7 +614,6 @@
                 }
             }
         });
-
         // 扫描带有背景样式的容器元素
         const allNodes = document.querySelectorAll('div, section, article, a, span, header, footer, li, figure');
         allNodes.forEach(node => {
@@ -639,7 +628,6 @@
                 }
             }
         });
-
         // 扫描并导出画布内容
         const canvases = document.querySelectorAll('canvas');
         canvases.forEach(cvs => {
@@ -650,7 +638,6 @@
                 }
             } catch (e) { }
         });
-
         updateFloatingBadge();
     }
 
@@ -663,7 +650,6 @@
                 registerAudio(src, 'DOM_AUDIO');
             }
         });
-
         const customNodes = document.querySelectorAll('[data-audio], [data-mp3], [data-sound], [data-url], [data-src]');
         customNodes.forEach(node => {
             ['data-audio', 'data-mp3', 'data-sound', 'data-url', 'data-src'].forEach(attr => {
@@ -673,7 +659,6 @@
                 }
             });
         });
-
         updateFloatingBadge();
     }
 
@@ -742,7 +727,6 @@
             position: relative;
         }
         *, *::before, *::after { box-sizing: inherit; }
-
         /* 悬浮球控件 */
         .fab-trigger {
             position: fixed;
@@ -796,7 +780,6 @@
             80% { transform: scale(1.2); }
             100% { transform: scale(1); }
         }
-
         /* 模态弹窗遮罩与主面板 */
         .modal-overlay {
             position: fixed;
@@ -813,7 +796,6 @@
             display: flex;
             opacity: 1;
         }
-
         /* 顶部标题栏与导航 */
         .modal-header {
             height: 64px;
@@ -843,7 +825,6 @@
             color: var(--text-main);
         }
         .header-title svg { width: 22px; height: 22px; fill: var(--primary); }
-        
         /* 模态选项卡 */
         .tab-switcher {
             display: inline-flex;
@@ -884,7 +865,6 @@
             color: var(--primary);
             font-weight: 600;
         }
-
         /* 顶部操作区 */
         .header-actions {
             display: flex;
@@ -937,7 +917,6 @@
             border-radius: 6px;
         }
         .btn-close:hover { color: var(--text-main); background: #e2e8f0; }
-
         /* 筛选与过滤工具条 */
         .filter-bar {
             background: #f8fafc;
@@ -977,7 +956,6 @@
             font-size: inherit;
             color: var(--text-muted);
         }
-
         /* 音频搜索框 */
         .search-wrap {
             position: relative;
@@ -1017,7 +995,6 @@
         }
         .search-clear:hover { fill: var(--text-main); }
         .search-wrap.has-value .search-clear { display: inline-flex; }
-
         /* 媒体画廊主体 */
         .modal-body {
             flex: 1;
@@ -1037,7 +1014,6 @@
             max-width: 1100px;
             margin: 0 auto;
         }
-
         /* 图片卡片 */
         .img-card {
             background: #ffffff;
@@ -1080,7 +1056,6 @@
         .img-card:hover .img-thumb {
             transform: scale(1.05);
         }
-
         /* 音频卡片条目 */
         .audio-card {
             background: #ffffff;
@@ -1160,7 +1135,6 @@
             height: 34px;
             outline: none;
         }
-
         /* 选中标记框 */
         .select-checkbox-box {
             width: 20px;
@@ -1185,7 +1159,6 @@
             fill: #fff;
         }
         .selected .select-check-svg { display: block; }
-
         /* 卡片上层标签与勾选器 */
         .img-select-overlay {
             position: absolute;
@@ -1213,7 +1186,6 @@
             fill: #fff;
         }
         .img-card.selected .img-select-check { display: block; }
-
         .media-format-badge {
             position: absolute;
             top: 8px;
@@ -1238,7 +1210,6 @@
             border-radius: 6px;
             text-transform: uppercase;
         }
-
         /* 卡片底部信息条 */
         .img-meta {
             padding: 10px 12px;
@@ -1253,14 +1224,12 @@
             color: var(--text-muted);
             font-family: monospace;
         }
-
         .gallery-empty {
             text-align: center;
             padding: 60px 20px;
             color: var(--text-muted);
             font-size: 15px;
         }
-
         /* 进度提示浮层 */
         .toast-notify {
             position: fixed;
@@ -1322,7 +1291,6 @@
                 </button>
             </div>
         </div>
-
         <div class="filter-bar">
             <div class="filter-group">
                 <div class="filter-format-container" id="ag-format-checkboxes"></div>
@@ -1334,7 +1302,6 @@
                 <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
             </span>
         </div>
-
         <div class="modal-body">
             <div class="gallery-grid" id="ag-gallery"></div>
         </div>
@@ -1367,19 +1334,16 @@
         const tabImg = shadow.getElementById('ag-tab-img');
         const tabAudio = shadow.getElementById('ag-tab-audio');
         const countSpan = shadow.getElementById('ag-selected-count');
-
         if (tabImg) {
             tabImg.textContent = `图片 (${getFilteredImages().length})`;
         }
         if (tabAudio) {
             tabAudio.textContent = `音频 (${getFilteredAudios().length})`;
         }
-
         const selectedSet = currentTab === 'IMAGE' ? selectedImages : selectedAudios;
         if (countSpan) {
             countSpan.textContent = `(已选中 ${selectedSet.size} 项)`;
         }
-
         const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
         if (toggleBtn) {
             const activeList = currentTab === 'IMAGE' ? getFilteredImages() : getFilteredAudios();
@@ -1395,7 +1359,6 @@
         if (!container) {
             return;
         }
-
         if (currentTab === 'IMAGE') {
             if (dedupWrap) {
                 dedupWrap.style.display = 'inline-flex';
@@ -1407,19 +1370,16 @@
                 const fmt = item.format || 'OTHER';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-
             if (formatCounts.size === 0) {
                 container.innerHTML = '<span class="format-count">暂无图片格式</span>';
                 return;
             }
-
             let html = '';
             formatCounts.forEach((count, fmt) => {
                 const isChecked = activeImageFormatFilters.has(fmt) ? 'checked' : '';
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
             });
             container.innerHTML = html;
-
             container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
@@ -1441,19 +1401,16 @@
                 const fmt = item.format || 'AUDIO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-
             if (formatCounts.size === 0) {
                 container.innerHTML = '<span class="format-count">暂无音频格式</span>';
                 return;
             }
-
             let html = '';
             formatCounts.forEach((count, fmt) => {
                 const isChecked = activeAudioFormatFilters.has(fmt) ? 'checked' : '';
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
             });
             container.innerHTML = html;
-
             container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
@@ -1472,12 +1429,10 @@
         const result = [];
         const seenHashes = new Set();
         let dupCount = 0;
-
         imageStore.forEach(item => {
             if (knownImageFormats.has(item.format) && !activeImageFormatFilters.has(item.format)) {
                 return;
             }
-
             if (enableDeduplication && item.hash) {
                 if (seenHashes.has(item.hash)) {
                     dupCount++;
@@ -1485,10 +1440,8 @@
                 }
                 seenHashes.add(item.hash);
             }
-
             result.push(item);
         });
-
         updateDeduplicationStat(dupCount);
         return result;
     }
@@ -1527,25 +1480,20 @@
         if (!gallery) {
             return;
         }
-
         if (currentTab === 'IMAGE') {
             gallery.className = 'gallery-grid';
             const filtered = getFilteredImages();
             gallery.innerHTML = '';
-
             if (filtered.length === 0) {
                 gallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
                 updateModalHeaderCounters();
                 return;
             }
-
             filtered.forEach(item => {
                 const card = document.createElement('div');
                 card.dataset.url = item.url;
                 card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
-
                 const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
-
                 card.innerHTML = `
                     <div class="img-thumb-wrapper">
                         <img class="img-thumb" src="${item.url}" alt="thumb" loading="lazy">
@@ -1558,7 +1506,6 @@
                         <span class="img-dim">${dimText}</span>
                     </div>
                 `;
-
                 const imgEl = card.querySelector('.img-thumb');
                 const dimSpan = card.querySelector('.img-dim');
                 function onThumbLoad() {
@@ -1578,7 +1525,6 @@
                 } else if (imgEl) {
                     imgEl.addEventListener('load', onThumbLoad);
                 }
-
                 card.addEventListener('click', () => {
                     if (selectedImages.has(item.url)) {
                         selectedImages.delete(item.url);
@@ -1589,27 +1535,22 @@
                     }
                     updateModalHeaderCounters();
                 });
-
                 gallery.appendChild(card);
             });
         } else {
             gallery.className = 'audio-list';
             const filtered = getFilteredAudios();
             gallery.innerHTML = '';
-
             if (filtered.length === 0) {
                 gallery.innerHTML = '<div class="gallery-empty">当前未发现音频资源</div>';
                 updateModalHeaderCounters();
                 return;
             }
-
             filtered.forEach(item => {
                 const card = document.createElement('div');
                 card.dataset.url = item.url;
                 card.className = 'audio-card' + (selectedAudios.has(item.url) ? ' selected' : '');
-
                 const sizeStr = formatBytes(item.size);
-
                 card.innerHTML = `
                     <div class="audio-left">
                         <div class="select-checkbox-box">
@@ -1633,13 +1574,11 @@
                         </div>
                     </div>
                 `;
-
                 // 阻止播放器控件点击触发整行选择
                 const audioPlayer = card.querySelector('audio');
                 if (audioPlayer) {
                     audioPlayer.addEventListener('click', (e) => e.stopPropagation());
                 }
-
                 card.addEventListener('click', () => {
                     if (selectedAudios.has(item.url)) {
                         selectedAudios.delete(item.url);
@@ -1650,11 +1589,9 @@
                     }
                     updateModalHeaderCounters();
                 });
-
                 gallery.appendChild(card);
             });
         }
-
         updateModalHeaderCounters();
         updateFloatingBadge();
     }
@@ -1698,10 +1635,8 @@
             showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
             return;
         }
-
         const list = Array.from(selectedSet);
         showToast(`已开始下载 ${list.length} 个${isImg ? '图片' : '音频'}文件`);
-
         list.forEach((url, idx) => {
             setTimeout(() => {
                 if (isImg) {
@@ -1729,7 +1664,6 @@
                 resolve({ data: ab });
                 return;
             }
-
             if (typeof GM_xmlhttpRequest === 'function') {
                 GM_xmlhttpRequest({
                     method: 'GET',
@@ -1780,13 +1714,11 @@
         const parts = [];
         const centralEntries = [];
         let offset = 0;
-
         for (const file of files) {
             const nameBytes = encoder.encode(file.name);
             const dataBytes = file.data instanceof Uint8Array ? file.data : new Uint8Array(file.data);
             const crc = calculateCrc32(dataBytes);
             const size = dataBytes.length;
-
             const localHeader = new Uint8Array(30 + nameBytes.length);
             const view = new DataView(localHeader.buffer);
             view.setUint32(0, 67324752, true);
@@ -1801,10 +1733,8 @@
             view.setUint16(26, nameBytes.length, true);
             view.setUint16(28, 0, true);
             localHeader.set(nameBytes, 30);
-
             parts.push(localHeader);
             parts.push(dataBytes);
-
             const centralEntry = new Uint8Array(46 + nameBytes.length);
             const cView = new DataView(centralEntry.buffer);
             cView.setUint32(0, 33639248, true);
@@ -1825,18 +1755,15 @@
             cView.setUint32(38, 0, true);
             cView.setUint32(42, offset, true);
             centralEntry.set(nameBytes, 46);
-
             centralEntries.push(centralEntry);
             offset += localHeader.length + dataBytes.length;
         }
-
         const centralDirOffset = offset;
         let centralDirSize = 0;
         for (const entry of centralEntries) {
             parts.push(entry);
             centralDirSize += entry.length;
         }
-
         const endRecord = new Uint8Array(22);
         const endView = new DataView(endRecord.buffer);
         endView.setUint32(0, 101010256, true);
@@ -1848,7 +1775,6 @@
         endView.setUint32(16, centralDirOffset, true);
         endView.setUint16(20, 0, true);
         parts.push(endRecord);
-
         let totalLen = 0;
         for (const p of parts) {
             totalLen += p.length;
@@ -1870,13 +1796,10 @@
             showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
             return;
         }
-
         const selectedList = Array.from(selectedSet);
         const filesToZip = [];
         let successCount = 0;
-
         showToast(`正在下载并打包 0/${selectedList.length} 个文件请稍候...`, 60000);
-
         const tasks = selectedList.map(async (url, idx) => {
             try {
                 let targetUrl;
@@ -1893,7 +1816,6 @@
                     const rawName = item?.name || extractFileName(url, `audio_${idx + 1}.mp3`);
                     fileName = `audios/${rawName}`;
                 }
-
                 const binary = await fetchBinary(targetUrl);
                 const rawBytes = new Uint8Array(binary.data);
                 filesToZip.push({ name: fileName, data: rawBytes });
@@ -1901,20 +1823,16 @@
                 showToast(`已成功获取 ${successCount}/${selectedList.length} 个文件...`, 60000);
             } catch (e) { }
         });
-
         await Promise.all(tasks);
-
         if (filesToZip.length === 0) {
             showToast('资源拉取失败无法打包');
             return;
         }
-
         showToast('正在生成压缩文件请稍候...');
         const zipBytes = createZipArchive(filesToZip);
         const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
         const zipFileName = `${isImg ? 'images' : 'audios'}_pack_${Date.now()}.zip`;
         const blobUrl = URL.createObjectURL(zipBlob);
-
         if (typeof GM_download === 'function') {
             try {
                 GM_download({
@@ -1930,7 +1848,6 @@
         } else {
             triggerAnchorDownload(blobUrl, zipFileName);
         }
-
         showToast(`成功打包下载 ${successCount} 个文件！`);
     }
 
@@ -1972,16 +1889,13 @@
         }
         const dx = e.clientX - dragStartX;
         const dy = e.clientY - dragStartY;
-
         if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
             hasMoved = true;
         }
-
         const maxX = window.innerWidth - 64;
         const maxY = window.innerHeight - 64;
         const newLeft = Math.max(10, Math.min(fabInitialLeft + dx, maxX));
         const newTop = Math.max(10, Math.min(fabInitialTop + dy, maxY));
-
         fab.style.left = `${newLeft}px`;
         fab.style.top = `${newTop}px`;
         fab.style.right = 'auto';
@@ -1996,7 +1910,6 @@
         fab.classList.remove('dragging');
         window.removeEventListener('pointermove', onPointerMove);
         window.removeEventListener('pointerup', onPointerUp);
-
         if (hasMoved) {
             const rect = fab.getBoundingClientRect();
             if (typeof GM_setValue === 'function') {
@@ -2010,11 +1923,9 @@
         hasMoved = false;
         dragStartX = e.clientX;
         dragStartY = e.clientY;
-
         const rect = fab.getBoundingClientRect();
         fabInitialLeft = rect.left;
         fabInitialTop = rect.top;
-
         fab.classList.add('dragging');
         window.addEventListener('pointermove', onPointerMove);
         window.addEventListener('pointerup', onPointerUp);
@@ -2069,7 +1980,6 @@
         if (filtered.length === 0) {
             return;
         }
-
         const isAllSelected = filtered.every(item => selectedSet.has(item.url));
         if (isAllSelected) {
             filtered.forEach(item => selectedSet.delete(item.url));

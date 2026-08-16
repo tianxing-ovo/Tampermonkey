@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.1.1
+// @version      1.1.2
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -1724,7 +1724,8 @@
             const view = new DataView(localHeader.buffer);
             view.setUint32(0, 67324752, true);
             view.setUint16(4, 20, true);
-            view.setUint16(6, 0, true);
+            // 设置UTF-8编码标志位
+            view.setUint16(6, 0x0800, true);
             view.setUint16(8, 0, true);
             view.setUint16(10, 0, true);
             view.setUint16(12, 0, true);
@@ -1741,7 +1742,7 @@
             cView.setUint32(0, 33639248, true);
             cView.setUint16(4, 20, true);
             cView.setUint16(6, 20, true);
-            cView.setUint16(8, 0, true);
+            cView.setUint16(8, 0x0800, true);
             cView.setUint16(10, 0, true);
             cView.setUint16(12, 0, true);
             cView.setUint16(14, 0, true);
@@ -1800,7 +1801,7 @@
         const selectedList = Array.from(selectedSet);
         const filesToZip = [];
         let successCount = 0;
-        showToast(`正在下载并打包 0/${selectedList.length} 个文件请稍候...`, 60000);
+        showToast(`正在下载并打包 0/${selectedList.length} 个文件请稍候`, 60000);
         const tasks = selectedList.map(async (url, idx) => {
             try {
                 let targetUrl;
@@ -1821,7 +1822,7 @@
                 const rawBytes = new Uint8Array(binary.data);
                 filesToZip.push({ name: fileName, data: rawBytes });
                 successCount++;
-                showToast(`已成功获取 ${successCount}/${selectedList.length} 个文件...`, 60000);
+                showToast(`已成功获取 ${successCount}/${selectedList.length} 个文件`, 60000);
             } catch (e) { }
         });
         await Promise.all(tasks);
@@ -1829,7 +1830,7 @@
             showToast('资源拉取失败无法打包');
             return;
         }
-        showToast('正在生成压缩文件请稍候...');
+        showToast('正在生成压缩文件请稍候');
         const zipBytes = createZipArchive(filesToZip);
         const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
         const zipFileName = `${isImg ? 'images' : 'audios'}_pack_${Date.now()}.zip`;
@@ -1849,7 +1850,7 @@
         } else {
             triggerAnchorDownload(blobUrl, zipFileName);
         }
-        showToast(`成功打包下载 ${successCount} 个文件！`);
+        showToast(`成功打包下载 ${successCount} 个文件`);
     }
 
     // 触发原生锚点标签下载

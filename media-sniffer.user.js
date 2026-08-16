@@ -696,7 +696,7 @@
     container.id = 'ag-media-sniffer-root';
 
     function attachContainer() {
-        if (!container.parentNode) {
+        if (!container.isConnected) {
             (document.body || document.documentElement).appendChild(container);
         }
     }
@@ -705,6 +705,8 @@
     } else {
         document.addEventListener('DOMContentLoaded', attachContainer);
     }
+    // 监听 SPA 路由切换导致容器被移除后自动重新挂载
+    new MutationObserver(attachContainer).observe(document.documentElement, { childList: true, subtree: false });
 
     const shadow = container.attachShadow({ mode: 'open' });
 

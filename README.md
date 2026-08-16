@@ -9,12 +9,14 @@
 - 脚本文件：`translate.user.js`
 - 词典文件：`translations.json`
 - 脚本图标：`translate-icon.png`
+- 开发加载器：`translate.dev.js`
 - 在线安装：[安装汉化脚本](https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate.user.js)
 
 ### 媒体嗅探器
 
 - 脚本文件：`media-sniffer.user.js`
 - 脚本图标：`media-sniffer-icon.png`
+- 开发加载器：`media-sniffer.dev.js`
 - 在线安装：[安装媒体嗅探器](https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer.user.js)
 
 ## 功能概览
@@ -42,14 +44,20 @@
 - 音频选项卡支持关键字实时搜索与一键清空
 - 音频列表内嵌播放器并在加载时显示转圈反馈
 - 悬浮球支持全屏幕自由拖拽并持久保存位置坐标
+- 在 SPA 页面路由切换后自动重新挂载悬浮球
 - 画廊弹窗采用 Shadow DOM 隔离与现代化流式排版
 - 模态展开时锁定背景页面滚动
 - 支持多选与全选以及一键批量复制全部真实链接
 - 内置纯原生轻量零依赖 ZIP 引擎实现秒级打包下载
 
-## 本地调试
+## 本地开发
 
-克隆仓库后把目标脚本内容粘贴至新建的 Tampermonkey 脚本中保存运行即可进行本地调试
+克隆仓库后在 Tampermonkey 扩展设置中开启文件访问权限然后新建脚本将对应 Dev 加载器的内容粘贴保存即可实现修改源文件后刷新浏览器立即生效
+
+|       加载器文件       |      对应正式脚本       |
+|:----------------------:|:-----------------------:|
+| `media-sniffer.dev.js` | `media-sniffer.user.js` |
+|   `translate.dev.js`   |   `translate.user.js`   |
 
 ## 贡献
 

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.1.3
+// @version      1.1.4
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -1413,12 +1413,37 @@
                 container.innerHTML = '<span class="format-count">暂无图片格式</span>';
                 return;
             }
+            let checkedCount = 0;
+            formatCounts.forEach((count, fmt) => {
+                if (activeImageFormatFilters.has(fmt)) {
+                    checkedCount++;
+                }
+            });
+            const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
+            const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
             let html = '';
+            if (formatCounts.size > 1) {
+                html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
+            }
             formatCounts.forEach((count, fmt) => {
                 const isChecked = activeImageFormatFilters.has(fmt) ? 'checked' : '';
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
             });
             container.innerHTML = html;
+            const allCheckbox = container.querySelector('.filter-format-all-checkbox');
+            if (allCheckbox) {
+                allCheckbox.indeterminate = isIndeterminate;
+                allCheckbox.addEventListener('change', () => {
+                    if (allCheckbox.checked) {
+                        formatCounts.forEach((_, fmt) => {
+                            activeImageFormatFilters.add(fmt);
+                        });
+                    } else {
+                        activeImageFormatFilters.clear();
+                    }
+                    renderGallery();
+                });
+            }
             container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
@@ -1434,7 +1459,9 @@
                 dedupWrap.style.display = 'none';
             }
             const searchWrap = shadow.getElementById('ag-search-wrap');
-            if (searchWrap) searchWrap.style.display = 'inline-flex';
+            if (searchWrap) {
+                searchWrap.style.display = 'inline-flex';
+            }
             const formatCounts = new Map();
             audioStore.forEach(item => {
                 const fmt = item.format || 'AUDIO';
@@ -1444,12 +1471,37 @@
                 container.innerHTML = '<span class="format-count">暂无音频格式</span>';
                 return;
             }
+            let checkedCount = 0;
+            formatCounts.forEach((count, fmt) => {
+                if (activeAudioFormatFilters.has(fmt)) {
+                    checkedCount++;
+                }
+            });
+            const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
+            const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
             let html = '';
+            if (formatCounts.size > 1) {
+                html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
+            }
             formatCounts.forEach((count, fmt) => {
                 const isChecked = activeAudioFormatFilters.has(fmt) ? 'checked' : '';
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
             });
             container.innerHTML = html;
+            const allAudioCheckbox = container.querySelector('.filter-format-all-checkbox');
+            if (allAudioCheckbox) {
+                allAudioCheckbox.indeterminate = isIndeterminate;
+                allAudioCheckbox.addEventListener('change', () => {
+                    if (allAudioCheckbox.checked) {
+                        formatCounts.forEach((_, fmt) => {
+                            activeAudioFormatFilters.add(fmt);
+                        });
+                    } else {
+                        activeAudioFormatFilters.clear();
+                    }
+                    renderGallery();
+                });
+            }
             container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
                 cb.addEventListener('change', () => {
                     if (cb.checked) {

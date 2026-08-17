@@ -1268,17 +1268,32 @@
             transform: translateX(-50%);
             background: rgba(15, 23, 42, 0.92);
             color: #fff;
-            padding: 10px 20px;
+            padding: 8px 16px;
             border-radius: 10px;
             border: 1px solid rgba(255,255,255,0.1);
             box-shadow: 0 10px 30px rgba(0,0,0,0.25);
             z-index: 2147483647;
             display: none;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
             font-size: 13px;
         }
         .toast-notify.active { display: flex; animation: toastIn 0.2s ease; }
+        .toast-cancel-btn {
+            background: rgba(239, 68, 68, 0.25);
+            color: #fca5a5;
+            border: 1px solid rgba(239, 68, 68, 0.4);
+            padding: 2px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            cursor: pointer;
+            line-height: 1.4;
+            transition: all 0.15s ease;
+        }
+        .toast-cancel-btn:hover {
+            background: rgba(239, 68, 68, 0.5);
+            color: #ffffff;
+        }
         @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
     `;
     shadow.appendChild(styleEl);
@@ -1340,20 +1355,66 @@
 
     const toast = document.createElement('div');
     toast.className = 'toast-notify';
+    const toastTextSpan = document.createElement('span');
+    const toastCancelBtn = document.createElement('button');
+    toastCancelBtn.className = 'toast-cancel-btn';
+    toastCancelBtn.textContent = '取消';
+    toastCancelBtn.style.display = 'none';
+    toast.appendChild(toastTextSpan);
+    toast.appendChild(toastCancelBtn);
     shadow.appendChild(toast);
+
+    let toastTimer = null;
+    let activeDownloadXhr = null;
+    let isDownloadCancelled = false;
+    let currentToastCancelCallback = null;
+
+    toastCancelBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (typeof currentToastCancelCallback === 'function') {
+            currentToastCancelCallback();
+        }
+    });
 
     /**
      * 弹出底部半透明状态提示气泡
      * 
      * @param {string} msg 提示消息文本
      * @param {number} duration 显示持续时间毫秒数
+     * @param {Function} onCancel 取消操作回调函数
      */
-    function showToast(msg, duration = 2500) {
-        toast.textContent = msg;
+    function showToast(msg, duration = 2500, onCancel = null) {
+        if (toastTimer) {
+            clearTimeout(toastTimer);
+            toastTimer = null;
+        }
+        toastTextSpan.textContent = msg;
+        currentToastCancelCallback = onCancel;
+        if (typeof onCancel === 'function') {
+            toastCancelBtn.style.display = 'inline-block';
+        } else {
+            toastCancelBtn.style.display = 'none';
+        }
         toast.classList.add('active');
-        setTimeout(() => {
-            toast.classList.remove('active');
-        }, duration);
+        if (duration > 0 && duration < 60000) {
+            toastTimer = setTimeout(() => {
+                toast.classList.remove('active');
+                toastTimer = null;
+            }, duration);
+        }
+    }
+
+    /* 取消当前正在执行的媒体下载任务 */
+    function cancelDownload() {
+        isDownloadCancelled = true;
+        currentToastCancelCallback = null;
+        if (activeDownloadXhr && typeof activeDownloadXhr.abort === 'function') {
+            try {
+                activeDownloadXhr.abort();
+            } catch (e) { }
+        }
+        activeDownloadXhr = null;
+        showToast('已取消下载', 2000);
     }
 
     /**
@@ -1751,68 +1812,134 @@
      * @param {string} name 自定义保存文件名
      * @param {string} ext 目标文件拓展名
      * @param {string} fallbackUrl 请求失败时的回退网络链接
+     * @param {string} prefix 任务序数标识前缀
+     * @returns {Promise<boolean>} 下载是否成功完成
      */
-    function downloadSingleItem(url, name, ext, fallbackUrl = '') {
-        const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
-        if (url.startsWith('data:')) {
-            triggerAnchorDownload(url, fileName);
-            return;
-        }
-        // 先用GM_xmlhttpRequest携带Cookie拉取并校验响应状态再保存
-        if (typeof GM_xmlhttpRequest === 'function') {
-            GM_xmlhttpRequest({
-                method: 'GET',
-                url: url,
-                responseType: 'blob',
-                headers: { 'Referer': window.location.href },
-                cookie: document.cookie,
-                onload: (res) => {
-                    if (res.status >= 200 && res.status < 300) {
-                        triggerAnchorDownload(URL.createObjectURL(res.response), fileName);
-                    } else if (fallbackUrl && fallbackUrl !== url) {
-                        downloadSingleItem(fallbackUrl, name, ext, '');
-                    } else {
-                        showToast(`下载失败：服务器返回 ${res.status}，该链接可能需要登录或已过期`);
+    function downloadSingleItem(url, name, ext, fallbackUrl = '', prefix = '') {
+        return new Promise((resolve) => {
+            if (isDownloadCancelled) {
+                resolve(false);
+                return;
+            }
+            const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
+            const tag = prefix ? `${prefix} ` : '';
+            if (url.startsWith('data:')) {
+                triggerAnchorDownload(url, fileName);
+                resolve(true);
+                return;
+            }
+            // 先用GM_xmlhttpRequest携带Cookie拉取并校验响应状态再保存
+            if (typeof GM_xmlhttpRequest === 'function') {
+                activeDownloadXhr = GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    responseType: 'blob',
+                    headers: { 'Referer': window.location.href },
+                    cookie: document.cookie,
+                    ['onprogress']: (progress) => {
+                        if (isDownloadCancelled) {
+                            return;
+                        }
+                        if (progress.lengthComputable && progress.total > 0) {
+                            const percent = Math.round((progress.loaded / progress.total) * 100);
+                            const loadedStr = formatBytes(progress.loaded);
+                            const totalStr = formatBytes(progress.total);
+                            showToast(`${tag}${percent}% (${loadedStr} / ${totalStr})`, 60000, cancelDownload);
+                        } else if (progress.loaded > 0) {
+                            const loadedStr = formatBytes(progress.loaded);
+                            showToast(`${tag}已接收 ${loadedStr}`, 60000, cancelDownload);
+                        }
+                    },
+                    onload: (res) => {
+                        activeDownloadXhr = null;
+                        if (isDownloadCancelled) {
+                            resolve(false);
+                            return;
+                        }
+                        if (res.status >= 200 && res.status < 300) {
+                            triggerAnchorDownload(URL.createObjectURL(res.response), fileName);
+                            showToast(`${tag}下载完成`, 2000);
+                            resolve(true);
+                        } else if (fallbackUrl && fallbackUrl !== url) {
+                            downloadSingleItem(fallbackUrl, name, ext, '', prefix).then(resolve);
+                        } else {
+                            showToast(`${tag}下载失败：服务器返回 ${res.status}`);
+                            resolve(false);
+                        }
+                    },
+                    ['onabort']: () => {
+                        activeDownloadXhr = null;
+                        resolve(false);
+                    },
+                    onerror: () => {
+                        activeDownloadXhr = null;
+                        if (isDownloadCancelled) {
+                            resolve(false);
+                            return;
+                        }
+                        if (fallbackUrl && fallbackUrl !== url) {
+                            downloadSingleItem(fallbackUrl, name, ext, '', prefix).then(resolve);
+                        } else {
+                            showToast(`${tag}下载失败：网络错误`);
+                            resolve(false);
+                        }
                     }
-                },
-                onerror: () => {
-                    if (fallbackUrl && fallbackUrl !== url) {
-                        downloadSingleItem(fallbackUrl, name, ext, '');
-                    } else {
-                        showToast(`下载失败：网络错误，请检查链接是否有效`);
-                    }
-                }
-            });
-        } else if (typeof GM_download === 'function') {
-            GM_download({ url: url, name: fileName, saveAs: false });
-        } else {
-            triggerAnchorDownload(url, fileName);
-        }
+                });
+            } else if (typeof GM_download === 'function') {
+                GM_download({ url: url, name: fileName, saveAs: false });
+                resolve(true);
+            } else {
+                triggerAnchorDownload(url, fileName);
+                resolve(true);
+            }
+        });
     }
 
-    /* 逐个下载选中的媒体文件 */
-    function downloadSelectedDirectly() {
+    /* 采用串行异步队列逐个下载选中的媒体文件 */
+    async function downloadSelectedDirectly() {
         const isImg = currentTab === 'IMAGE';
         const selectedSet = isImg ? selectedImages : selectedAudios;
         if (selectedSet.size === 0) {
             showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
             return;
         }
+        isDownloadCancelled = false;
         const list = Array.from(selectedSet);
-        showToast(`已开始下载 ${list.length} 个${isImg ? '图片' : '音频'}文件`);
-        list.forEach((url, idx) => {
-            setTimeout(() => {
-                if (isImg) {
-                    const item = imageStore.get(url);
-                    const ext = (item.format || 'jpg').toLowerCase();
-                    const fileName = item?.name ? `${item.name}.${ext}` : `image_${idx + 1}.${ext}`;
-                    downloadSingleItem(item.hdUrl || item.url, fileName, ext, item.url);
-                } else {
-                    const item = audioStore.get(url);
-                    downloadSingleItem(item.url, item.name, item.format || 'mp3');
-                }
-            }, idx * 220);
-        });
+        showToast(`开始下载 (共 ${list.length} 个文件)`, 1500, cancelDownload);
+        let successCount = 0;
+        for (let idx = 0; idx < list.length; idx++) {
+            if (isDownloadCancelled) {
+                break;
+            }
+            const url = list[idx];
+            const prefix = list.length > 1 ? `[${idx + 1}/${list.length}]` : '';
+            let success = false;
+            if (isImg) {
+                const item = imageStore.get(url);
+                const ext = (item?.format || 'jpg').toLowerCase();
+                const fileName = item?.name ? `${item.name}.${ext}` : `image_${idx + 1}.${ext}`;
+                success = await downloadSingleItem(item?.hdUrl || url, fileName, ext, url, prefix);
+            } else {
+                const item = audioStore.get(url);
+                const ext = (item?.format || 'mp3').toLowerCase();
+                const rawName = item?.name || extractFileName(url, `audio_${idx + 1}.${ext}`);
+                const fileName = rawName.toLowerCase().endsWith(`.${ext}`) ? rawName : `${rawName}.${ext}`;
+                success = await downloadSingleItem(url, fileName, ext, '', prefix);
+            }
+            if (isDownloadCancelled) {
+                break;
+            }
+            if (success) {
+                successCount++;
+            }
+            // 每个文件下载完成后稍作停顿缓冲防止过快触发浏览器安全拦截
+            if (idx < list.length - 1 && !isDownloadCancelled) {
+                await new Promise(r => setTimeout(r, 400));
+            }
+        }
+        if (!isDownloadCancelled && list.length > 1) {
+            showToast(`全部完成 (${successCount}/${list.length})`, 3000);
+        }
     }
 
     /**
@@ -2005,7 +2132,7 @@
         });
         const filesToZip = [];
         let successCount = 0;
-        showToast(`正在下载并打包 0/${selectedList.length} 个文件请稍候`, 60000);
+        showToast(`打包中: 0/${selectedList.length}`, 60000);
         const tasks = selectedList.map(async (url, idx) => {
             let targetUrl;
             if (isImg) {
@@ -2029,7 +2156,7 @@
                 const rawBytes = new Uint8Array(binary.data);
                 filesToZip.push({ name: fileName, data: rawBytes });
                 successCount++;
-                showToast(`已成功获取 ${successCount}/${selectedList.length} 个文件`, 60000);
+                showToast(`打包中: ${successCount}/${selectedList.length}`, 60000);
             }
         });
         await Promise.all(tasks);
@@ -2037,7 +2164,7 @@
             showToast('资源拉取失败无法打包');
             return;
         }
-        showToast('正在生成压缩文件请稍候');
+        showToast('正在生成压缩包...', 60000);
         const zipBytes = createZipArchive(filesToZip);
         const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
         const zipFileName = `${isImg ? 'images' : 'audios'}_pack_${Date.now()}.zip`;
@@ -2057,7 +2184,7 @@
         } else {
             triggerAnchorDownload(blobUrl, zipFileName);
         }
-        showToast(`成功打包下载 ${successCount} 个文件`);
+        showToast(`打包完成 (共 ${successCount} 个文件)`, 3000);
     }
 
     /**

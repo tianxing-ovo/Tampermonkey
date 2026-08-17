@@ -1111,6 +1111,12 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            cursor: pointer;
+            transition: color 0.15s ease;
+        }
+        .audio-name:hover {
+            color: var(--primary);
+            text-decoration: underline;
         }
         .audio-meta-row {
             display: flex;
@@ -1319,7 +1325,29 @@
     function showToast(msg, duration = 2500) {
         toast.textContent = msg;
         toast.classList.add('active');
-        setTimeout(() => toast.classList.remove('active'), duration);
+        setTimeout(() => {
+            toast.classList.remove('active');
+        }, duration);
+    }
+
+    /**
+     * 将文本内容复制到系统剪贴板并弹出提示
+     * 
+     * @param {string} text 待复制的文本内容
+     * @param {string} successMsg 复制成功时的提示文本
+     */
+    function copyToClipboard(text, successMsg = '已复制到剪贴板') {
+        if (!text) {
+            return;
+        }
+        if (typeof GM_setClipboard === 'function') {
+            GM_setClipboard(text);
+        } else if (navigator.clipboard) {
+            navigator.clipboard.writeText(text).catch(() => { });
+        }
+        if (successMsg) {
+            showToast(successMsg);
+        }
     }
 
     /* 统一刷新悬浮球角标数量统计 */
@@ -1586,7 +1614,7 @@
                             <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
                         </div>
                         <div class="audio-info">
-                            <div class="audio-name" title="${item.name}">${item.name}</div>
+                            <div class="audio-name" title="点击复制文件名">${item.name}</div>
                             <div class="audio-meta-row">
                                 <span class="audio-format-badge">${item.format}</span>
                                 ${sizeStr ? `<span>${sizeStr}</span>` : ''}
@@ -1600,6 +1628,14 @@
                         </div>
                     </div>
                 `;
+                // 阻止文件名点击触发整行选择并复制到剪贴板
+                const audioNameEl = card.querySelector('.audio-name');
+                if (audioNameEl) {
+                    audioNameEl.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        copyToClipboard(item.name, '已复制文件名');
+                    });
+                }
                 // 阻止播放器控件点击触发整行选择并监听互斥播放事件
                 const audioPlayer = card.querySelector('audio');
                 if (audioPlayer) {
@@ -2070,12 +2106,7 @@
         }
         const list = Array.from(selectedSet);
         const text = list.join('\n');
-        if (typeof GM_setClipboard === 'function') {
-            GM_setClipboard(text);
-        } else if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).catch(() => { });
-        }
-        showToast(`已复制 ${list.length} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
+        copyToClipboard(text, `已复制 ${list.length} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);

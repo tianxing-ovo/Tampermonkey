@@ -90,6 +90,19 @@
     }
 
     /**
+     * 清洗文本为安全合法的文件名字符串
+     * 
+     * @param {string} rawName 原始文本字符串
+     * @returns {string} 清洗后的合法文件名
+     */
+    function sanitizeFileName(rawName) {
+        if (!rawName || typeof rawName !== 'string') {
+            return '';
+        }
+        return rawName.trim().replace(/[\\/:*?"<>|\r\n\t]/g, '_').substring(0, 100);
+    }
+
+    /**
      * 从字符串中提取规范的绝对网络链接
      * 
      * @param {string} url 原始网络链接字符串
@@ -131,7 +144,7 @@
         hdUrl = hdUrl.replace(/@\d+[wh]_\d+[wh].*/i, '');
         hdUrl = hdUrl.replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2');
         hdUrl = hdUrl.replace(/\/thumb\/\d+\//i, '/original/');
-        hdUrl = hdUrl.replace(/\.webp$/i, '.jpg');
+        hdUrl = hdUrl.replace(/\.(jpg|jpeg|png)\.webp$/i, '.$1');
         return hdUrl;
     }
 
@@ -517,8 +530,9 @@
      * 
      * @param {string} rawUrl 图片网络链接
      * @param {string} source 触发捕获的来源标识
+     * @param {Object} meta 携带的附加元数据对象
      */
-    function registerImage(rawUrl, source = 'DOM') {
+    function registerImage(rawUrl, source = 'DOM', meta = {}) {
         const url = normalizeUrl(rawUrl);
         if (!url || url.length < 5) {
             return;
@@ -527,6 +541,10 @@
             return;
         }
         if (imageStore.has(url)) {
+            const exist = imageStore.get(url);
+            if (meta.name && !exist.name) {
+                exist.name = meta.name;
+            }
             return;
         }
         const format = detectImageFormat(url);
@@ -537,6 +555,7 @@
         const imgObj = {
             url: url,
             hdUrl: upgradeToHdUrl(url),
+            name: meta.name || '',
             format: format,
             source: source,
             width: 0,
@@ -590,23 +609,28 @@
     function scanPageImages() {
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
+            const altText = el.getAttribute('alt') || el.getAttribute('title') || el.closest('a')?.getAttribute('title') || '';
+            const cleanName = sanitizeFileName(altText);
             const possibleAttrs = [
-                'src', 'data-src', 'data-original', 'data-lazy-src', 'data-actualsrc',
-                'data-url', 'zoomfile', 'file', 'original', 'srcset', 'xlink:href', 'href'
+                'data-original', 'data-src', 'data-actualsrc', 'data-url', 'zoomfile',
+                'file', 'original', 'srcset', 'src', 'data-lazy-src', 'xlink:href', 'href'
             ];
             for (const attr of possibleAttrs) {
                 const val = el.getAttribute(attr);
                 if (val) {
+                    if (/\/(66|blank|pixel|loading|placeholder|1x1|spacer)\.(gif|png|webp|svg)(\?.*)?$/i.test(val)) {
+                        continue;
+                    }
                     if (attr === 'srcset') {
                         const parts = val.split(',');
                         parts.forEach(p => {
                             const u = p.trim().split(/\s+/)[0];
                             if (u) {
-                                registerImage(u, 'IMG-SRCSET');
+                                registerImage(u, 'IMG-SRCSET', { name: cleanName });
                             }
                         });
                     } else {
-                        registerImage(val, 'IMG');
+                        registerImage(val, 'IMG', { name: cleanName });
                     }
                 }
             }
@@ -617,9 +641,11 @@
             const style = node.getAttribute('style') || '';
             const matches = style.match(/url\(["']?([^"']+)["']?\)/gi);
             if (matches) {
+                const bgTitle = node.getAttribute('title') || node.getAttribute('aria-label') || '';
+                const cleanName = sanitizeFileName(bgTitle);
                 matches.forEach(m => {
                     const clean = m.replace(/^url\(["']?/i, '').replace(/["']?\)$/i, '');
-                    registerImage(clean, 'CSS-BG');
+                    registerImage(clean, 'CSS-BG', { name: cleanName });
                 });
             }
         });
@@ -1724,8 +1750,9 @@
      * @param {string} url 目标文件网络链接
      * @param {string} name 自定义保存文件名
      * @param {string} ext 目标文件拓展名
+     * @param {string} fallbackUrl 请求失败时的回退网络链接
      */
-    function downloadSingleItem(url, name, ext) {
+    function downloadSingleItem(url, name, ext, fallbackUrl = '') {
         const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
         if (url.startsWith('data:')) {
             triggerAnchorDownload(url, fileName);
@@ -1742,11 +1769,19 @@
                 onload: (res) => {
                     if (res.status >= 200 && res.status < 300) {
                         triggerAnchorDownload(URL.createObjectURL(res.response), fileName);
+                    } else if (fallbackUrl && fallbackUrl !== url) {
+                        downloadSingleItem(fallbackUrl, name, ext, '');
                     } else {
                         showToast(`下载失败：服务器返回 ${res.status}，该链接可能需要登录或已过期`);
                     }
                 },
-                onerror: () => showToast(`下载失败：网络错误，请检查链接是否有效`)
+                onerror: () => {
+                    if (fallbackUrl && fallbackUrl !== url) {
+                        downloadSingleItem(fallbackUrl, name, ext, '');
+                    } else {
+                        showToast(`下载失败：网络错误，请检查链接是否有效`);
+                    }
+                }
             });
         } else if (typeof GM_download === 'function') {
             GM_download({ url: url, name: fileName, saveAs: false });
@@ -1769,7 +1804,9 @@
             setTimeout(() => {
                 if (isImg) {
                     const item = imageStore.get(url);
-                    downloadSingleItem(item.hdUrl || item.url, `image_${idx + 1}.${(item.format || 'jpg').toLowerCase()}`, item.format || 'jpg');
+                    const ext = (item.format || 'jpg').toLowerCase();
+                    const fileName = item?.name ? `${item.name}.${ext}` : `image_${idx + 1}.${ext}`;
+                    downloadSingleItem(item.hdUrl || item.url, fileName, ext, item.url);
                 } else {
                     const item = audioStore.get(url);
                     downloadSingleItem(item.url, item.name, item.format || 'mp3');
@@ -1941,31 +1978,59 @@
             return;
         }
         const selectedList = Array.from(selectedSet);
+        const fileNames = selectedList.map((url, idx) => {
+            if (isImg) {
+                const item = imageStore.get(url);
+                const realExt = (item && item.format ? item.format : 'jpg').toLowerCase();
+                const padIndex = String(idx + 1).padStart(3, '0');
+                return item?.name ? `${item.name}.${realExt}` : `img_${padIndex}.${realExt}`;
+            } else {
+                const item = audioStore.get(url);
+                return item?.name || extractFileName(url, `audio_${idx + 1}.mp3`);
+            }
+        });
+        // 避免同名文件在压缩包内产生冲突
+        const nameOccurrences = new Map();
+        const uniqueFileNames = fileNames.map(fName => {
+            const count = (nameOccurrences.get(fName) || 0) + 1;
+            nameOccurrences.set(fName, count);
+            if (count > 1) {
+                const lastDot = fName.lastIndexOf('.');
+                if (lastDot > 0) {
+                    return `${fName.substring(0, lastDot)}_${count}${fName.substring(lastDot)}`;
+                }
+                return `${fName}_${count}`;
+            }
+            return fName;
+        });
         const filesToZip = [];
         let successCount = 0;
         showToast(`正在下载并打包 0/${selectedList.length} 个文件请稍候`, 60000);
         const tasks = selectedList.map(async (url, idx) => {
+            let targetUrl;
+            if (isImg) {
+                const item = imageStore.get(url);
+                targetUrl = (item && item.hdUrl) ? item.hdUrl : url;
+            } else {
+                targetUrl = url;
+            }
+            const fileName = `${isImg ? 'images' : 'audios'}/${uniqueFileNames[idx]}`;
+            let binary = null;
             try {
-                let targetUrl;
-                let fileName;
-                if (isImg) {
-                    const item = imageStore.get(url);
-                    targetUrl = (item && item.hdUrl) ? item.hdUrl : url;
-                    const realExt = (item && item.format ? item.format : 'jpg').toLowerCase();
-                    const padIndex = String(idx + 1).padStart(3, '0');
-                    fileName = `images/img_${padIndex}.${realExt}`;
-                } else {
-                    const item = audioStore.get(url);
-                    targetUrl = url;
-                    const rawName = item?.name || extractFileName(url, `audio_${idx + 1}.mp3`);
-                    fileName = `audios/${rawName}`;
+                binary = await fetchBinary(targetUrl);
+            } catch (e) {
+                if (targetUrl !== url) {
+                    try {
+                        binary = await fetchBinary(url);
+                    } catch (fallbackErr) { }
                 }
-                const binary = await fetchBinary(targetUrl);
+            }
+            if (binary && binary.data) {
                 const rawBytes = new Uint8Array(binary.data);
                 filesToZip.push({ name: fileName, data: rawBytes });
                 successCount++;
                 showToast(`已成功获取 ${successCount}/${selectedList.length} 个文件`, 60000);
-            } catch (e) { }
+            }
         });
         await Promise.all(tasks);
         if (filesToZip.length === 0) {

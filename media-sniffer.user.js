@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.1.4
+// @version      1.2.0
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -1418,6 +1418,27 @@
     }
 
     /**
+     * 格式化并更新下载进度提示浮层
+     * 
+     * @param {Object} progress 网络传输进度事件对象
+     * @param {string} tag 任务序数标识前缀文本
+     */
+    function updateProgressToast(progress, tag = '') {
+        if (isDownloadCancelled) {
+            return;
+        }
+        if (progress.lengthComputable && progress.total > 0) {
+            const percent = Math.round((progress.loaded / progress.total) * 100);
+            const loadedStr = formatBytes(progress.loaded);
+            const totalStr = formatBytes(progress.total);
+            showToast(`${tag}${percent}% (${loadedStr} / ${totalStr})`, 60000, cancelDownload);
+        } else if (progress.loaded > 0) {
+            const loadedStr = formatBytes(progress.loaded);
+            showToast(`${tag}已接收 ${loadedStr}`, 60000, cancelDownload);
+        }
+    }
+
+    /**
      * 将文本内容复制到系统剪贴板并弹出提示
      * 
      * @param {string} text 待复制的文本内容
@@ -1836,20 +1857,7 @@
                     responseType: 'blob',
                     headers: { 'Referer': window.location.href },
                     cookie: document.cookie,
-                    ['onprogress']: (progress) => {
-                        if (isDownloadCancelled) {
-                            return;
-                        }
-                        if (progress.lengthComputable && progress.total > 0) {
-                            const percent = Math.round((progress.loaded / progress.total) * 100);
-                            const loadedStr = formatBytes(progress.loaded);
-                            const totalStr = formatBytes(progress.total);
-                            showToast(`${tag}${percent}% (${loadedStr} / ${totalStr})`, 60000, cancelDownload);
-                        } else if (progress.loaded > 0) {
-                            const loadedStr = formatBytes(progress.loaded);
-                            showToast(`${tag}已接收 ${loadedStr}`, 60000, cancelDownload);
-                        }
-                    },
+                    ['onprogress']: (progress) => updateProgressToast(progress, tag),
                     onload: (res) => {
                         activeDownloadXhr = null;
                         if (isDownloadCancelled) {
@@ -1943,13 +1951,19 @@
     }
 
     /**
-     * 跨域拉取二进制数据并封装为异步期约
+     * 跨域拉取二进制数据并支持实时传输进度与中断控制
      * 
      * @param {string} url 目标资源网络链接
-     * @returns {Promise} 包含响应数据与状态的期约对象
+     * @param {string} prefix 任务序数标识前缀
+     * @returns {Promise<Object>} 包含响应二进制数据对象的期约
      */
-    function fetchBinary(url) {
+    function fetchBinary(url, prefix = '') {
         return new Promise((resolve, reject) => {
+            if (isDownloadCancelled) {
+                reject(new Error('Cancelled'));
+                return;
+            }
+            const tag = prefix ? `${prefix} ` : '';
             if (url.startsWith('data:')) {
                 const parts = url.split(',');
                 const byteString = atob(parts[1]);
@@ -1962,19 +1976,33 @@
                 return;
             }
             if (typeof GM_xmlhttpRequest === 'function') {
-                GM_xmlhttpRequest({
+                activeDownloadXhr = GM_xmlhttpRequest({
                     method: 'GET',
                     url: url,
                     responseType: 'arraybuffer',
                     headers: { 'Referer': window.location.href },
+                    cookie: document.cookie,
+                    ['onprogress']: (progress) => updateProgressToast(progress, tag),
                     onload: (res) => {
+                        activeDownloadXhr = null;
+                        if (isDownloadCancelled) {
+                            reject(new Error('Cancelled'));
+                            return;
+                        }
                         if (res.status >= 200 && res.status < 300) {
                             resolve({ data: res.response });
                         } else {
                             reject(new Error('HTTP status ' + res.status));
                         }
                     },
-                    onerror: () => reject(new Error('Network error'))
+                    ['onabort']: () => {
+                        activeDownloadXhr = null;
+                        reject(new Error('Cancelled'));
+                    },
+                    onerror: () => {
+                        activeDownloadXhr = null;
+                        reject(new Error('Network error'));
+                    }
                 });
             } else {
                 fetch(url)
@@ -2104,6 +2132,7 @@
             showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
             return;
         }
+        isDownloadCancelled = false;
         const selectedList = Array.from(selectedSet);
         const fileNames = selectedList.map((url, idx) => {
             if (isImg) {
@@ -2132,8 +2161,13 @@
         });
         const filesToZip = [];
         let successCount = 0;
-        showToast(`打包中: 0/${selectedList.length}`, 60000);
-        const tasks = selectedList.map(async (url, idx) => {
+        showToast(`开始打包 (共 ${selectedList.length} 个文件)`, 1500, cancelDownload);
+        for (let idx = 0; idx < selectedList.length; idx++) {
+            if (isDownloadCancelled) {
+                break;
+            }
+            const url = selectedList[idx];
+            const prefix = selectedList.length > 1 ? `[${idx + 1}/${selectedList.length}]` : '';
             let targetUrl;
             if (isImg) {
                 const item = imageStore.get(url);
@@ -2144,22 +2178,26 @@
             const fileName = `${isImg ? 'images' : 'audios'}/${uniqueFileNames[idx]}`;
             let binary = null;
             try {
-                binary = await fetchBinary(targetUrl);
+                binary = await fetchBinary(targetUrl, prefix);
             } catch (e) {
-                if (targetUrl !== url) {
+                if (targetUrl !== url && !isDownloadCancelled) {
                     try {
-                        binary = await fetchBinary(url);
+                        binary = await fetchBinary(url, prefix);
                     } catch (fallbackErr) { }
                 }
+            }
+            if (isDownloadCancelled) {
+                break;
             }
             if (binary && binary.data) {
                 const rawBytes = new Uint8Array(binary.data);
                 filesToZip.push({ name: fileName, data: rawBytes });
                 successCount++;
-                showToast(`打包中: ${successCount}/${selectedList.length}`, 60000);
             }
-        });
-        await Promise.all(tasks);
+        }
+        if (isDownloadCancelled) {
+            return;
+        }
         if (filesToZip.length === 0) {
             showToast('资源拉取失败无法打包');
             return;

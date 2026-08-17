@@ -58,15 +58,8 @@
      * @returns {string} 规范化的音频格式名称
      */
     function detectAudioFormat(url, mime = '') {
-        const target = (mime + ' ' + (url.split('?')[0].match(/\.([a-z0-9]+)$/i)?.[1] || '')).toLowerCase();
-        if (target.includes('mp3') || target.includes('mpeg')) {
-            return 'MP3';
-        }
-        if (target.includes('m4a') || target.includes('mp4')) {
-            return 'M4A';
-        }
-        const match = target.match(/\b(flac|wav|aac|ogg|opus)\b/);
-        return match ? match[1].toUpperCase() : 'AUDIO';
+        const m = `${url} ${mime}`.match(/\b(mp3|mpeg|m4a|mp4|flac|wav|aac|ogg|opus)\b/i);
+        return m ? m[1].toUpperCase().replace('MPEG', 'MP3').replace('MP4', 'M4A') : 'AUDIO';
     }
 
     /**
@@ -97,22 +90,18 @@
         if (!url || typeof url !== 'string') {
             return '';
         }
-        url = url.trim().replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
-        if (!url || url === 'undefined' || url === 'null' || url.includes('/undefined') || url.includes('/null') || url.includes('[object')) {
+        url = url.trim().replace(/^url\(["']?|["']?\)$/gi, '');
+        if (!url || /undefined|null|\[object/i.test(url)) {
             return '';
         }
-        if (url.startsWith('//')) {
-            url = window.location.protocol + url;
-        } else if (url.startsWith('/')) {
-            url = window.location.origin + url;
-        } else if (!url.startsWith('http') && !url.startsWith('data:') && !url.startsWith('blob:')) {
-            try {
-                url = new URL(url, window.location.href).href;
-            } catch (e) {
-                return '';
-            }
+        if (url.startsWith('data:') || url.startsWith('blob:')) {
+            return url;
         }
-        return url;
+        try {
+            return new URL(url, window.location.href).href;
+        } catch (e) {
+            return '';
+        }
     }
 
     /**
@@ -493,12 +482,8 @@
      * @returns {string} 推断出的图片格式大写名称
      */
     function detectImageFormat(url) {
-        const match = url.match(/data:image\/(svg|png|jpe?g|webp)|(?:\.|\b(?:format|f)=)(png|jpe?g|webp|svg|gif|avif)(?:[?&#]|$)/i);
-        if (match) {
-            const ext = (match[1] || match[2]).toLowerCase();
-            return ext === 'jpeg' ? 'JPG' : ext.toUpperCase();
-        }
-        return url.startsWith('data:') ? 'DATA' : 'JPG';
+        const m = url.match(/data:image\/(svg|png|jpe?g|webp)|(?:\.|\b(?:format|f)=)(png|jpe?g|webp|svg|gif|avif)(?:[?&#]|$)/i);
+        return m ? (m[1] || m[2]).toUpperCase().replace('JPEG', 'JPG') : (url.startsWith('data:') ? 'DATA' : 'JPG');
     }
 
     /**

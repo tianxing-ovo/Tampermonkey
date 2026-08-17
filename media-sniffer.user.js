@@ -46,6 +46,15 @@
     let activeAudioFormatFilters = new Set();
     let audioSearchKeyword = '';
     let savedBodyOverflow = null;
+    let currentPlayingAudio = null;
+
+    /* 停止当前正在播放的音频实例 */
+    function stopCurrentAudio() {
+        if (currentPlayingAudio) {
+            currentPlayingAudio.pause();
+            currentPlayingAudio = null;
+        }
+    }
 
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
@@ -1489,6 +1498,7 @@
 
     /* 渲染当前选项卡下的媒体画廊或音频列表 */
     function renderGallery() {
+        stopCurrentAudio();
         renderFormatFilters();
         const gallery = shadow.getElementById('ag-gallery');
         if (!gallery) {
@@ -1590,10 +1600,18 @@
                         </div>
                     </div>
                 `;
-                // 阻止播放器控件点击触发整行选择
+                // 阻止播放器控件点击触发整行选择并监听互斥播放事件
                 const audioPlayer = card.querySelector('audio');
                 if (audioPlayer) {
-                    audioPlayer.addEventListener('click', (e) => e.stopPropagation());
+                    audioPlayer.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                    });
+                    audioPlayer.addEventListener('play', () => {
+                        if (currentPlayingAudio && currentPlayingAudio !== audioPlayer) {
+                            currentPlayingAudio.pause();
+                        }
+                        currentPlayingAudio = audioPlayer;
+                    });
                 }
                 card.addEventListener('click', () => {
                     if (selectedAudios.has(item.url)) {
@@ -2002,6 +2020,7 @@
 
     if (tabImgBtn) {
         tabImgBtn.addEventListener('click', () => {
+            stopCurrentAudio();
             currentTab = 'IMAGE';
             tabImgBtn.classList.add('active');
             tabAudioBtn.classList.remove('active');
@@ -2019,6 +2038,7 @@
     }
 
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
+        stopCurrentAudio();
         isModalOpen = false;
         modal.classList.remove('active');
         document.body.style.overflow = savedBodyOverflow;

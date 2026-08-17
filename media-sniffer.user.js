@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.1.2
+// @version      1.1.3
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -50,39 +50,32 @@
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
 
-    // 音频MIME类型映射表
-    const AUDIO_MIME_MAP = [
-        ['mpeg', 'MP3'], ['mp3', 'MP3'],
-        ['mp4', 'M4A'], ['m4a', 'M4A'],
-        ['flac', 'FLAC'], ['wav', 'WAV'], ['aac', 'AAC'],
-        ['ogg', 'OGG'], ['opus', 'OPUS']
-    ];
-
-    // 音频后缀名映射表
-    const AUDIO_EXT_MAP = [
-        ['.mp3', 'MP3'], ['.m4a', 'M4A'], ['.flac', 'FLAC'], ['.wav', 'WAV'],
-        ['.aac', 'AAC'], ['.ogg', 'OGG'], ['.opus', 'OPUS']
-    ];
-
-    // 从网络链接或MIME类型推断规范的音频格式名称
+    /**
+     * 从网络链接或MIME类型推断规范的音频格式名称
+     * 
+     * @param {string} url 音频链接
+     * @param {string} mime MIME类型字符串
+     * @returns {string} 规范化的音频格式名称
+     */
     function detectAudioFormat(url, mime = '') {
-        if (mime) {
-            for (const [keyword, fmt] of AUDIO_MIME_MAP) {
-                if (mime.includes(keyword)) {
-                    return fmt;
-                }
-            }
+        const target = (mime + ' ' + (url.split('?')[0].match(/\.([a-z0-9]+)$/i)?.[1] || '')).toLowerCase();
+        if (target.includes('mp3') || target.includes('mpeg')) {
+            return 'MP3';
         }
-        const cleanUrl = url.split('?')[0].toLowerCase();
-        for (const [ext, fmt] of AUDIO_EXT_MAP) {
-            if (cleanUrl.endsWith(ext)) {
-                return fmt;
-            }
+        if (target.includes('m4a') || target.includes('mp4')) {
+            return 'M4A';
         }
-        return 'AUDIO';
+        const match = target.match(/\b(flac|wav|aac|ogg|opus)\b/);
+        return match ? match[1].toUpperCase() : 'AUDIO';
     }
 
-    // 从任意网络链接提取文件名
+    /**
+     * 从网络链接中提取文件名
+     * 
+     * @param {string} url 目标网络链接
+     * @param {string} defaultName 默认回退文件名
+     * @returns {string} 提取出的文件名
+     */
     function extractFileName(url, defaultName = 'audio_track') {
         try {
             const pathname = new URL(url, window.location.href).pathname;
@@ -94,7 +87,12 @@
         return defaultName;
     }
 
-    // 从任意字符串中提取规范的绝对网络链接
+    /**
+     * 从字符串中提取规范的绝对网络链接
+     * 
+     * @param {string} url 原始网络链接字符串
+     * @returns {string} 规范化的绝对网络链接
+     */
     function normalizeUrl(url) {
         if (!url || typeof url !== 'string') {
             return '';
@@ -117,7 +115,12 @@
         return url;
     }
 
-    // 清洗并升级主流图床为最高清原图地址
+    /**
+     * 清洗主流图床链接并升级为高清原图地址
+     * 
+     * @param {string} url 原始图片网络链接
+     * @returns {string} 高清原图网络链接
+     */
     function upgradeToHdUrl(url) {
         if (!url || typeof url !== 'string') {
             return url;
@@ -134,7 +137,12 @@
         return hdUrl;
     }
 
-    // 格式化文件字节大小为易读文本
+    /**
+     * 格式化文件字节大小为易读文本
+     * 
+     * @param {number} bytes 文件字节数值
+     * @returns {string} 格式化后的文件大小字符串
+     */
     function formatBytes(bytes) {
         if (!bytes || isNaN(bytes) || bytes <= 0) {
             return '';
@@ -148,7 +156,13 @@
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
     }
 
-    // 注册音频对象到全局存储集合
+    /**
+     * 注册音频对象到全局存储集合
+     * 
+     * @param {string} rawUrl 音频网络链接
+     * @param {string} source 触发捕获的来源标识
+     * @param {Object} meta 携带的附加元数据对象
+     */
     function registerAudio(rawUrl, source = 'NETWORK', meta = {}) {
         const url = normalizeUrl(rawUrl);
         if (!url || url.length < 5) {
@@ -193,7 +207,12 @@
         }
     }
 
-    // 深度递归扫描任意对象中潜藏的音频网络链接
+    /**
+     * 深度递归扫描对象中潜藏的音频网络链接
+     * 
+     * @param {*} obj 待扫描的任意数据载荷
+     * @param {number} depth 当前递归深度层级
+     */
     function deepScanForMedia(obj, depth = 0) {
         if (!obj || depth > 6) {
             return;
@@ -216,8 +235,8 @@
                 if (typeof val === 'string') {
                     if (/^(url|src|playUrl|play_url|audioUrl|audio_url|streamUrl|file_url|raw_url|download_url)$/i.test(key)) {
                         if (val.startsWith('http') && (AUDIO_EXT_REGEX.test(val) || val.includes('/audio/') || val.includes('/sound/'))) {
-                            const nameVal = obj.name || obj.title || obj.fileName || obj.songName || '';
-                            registerAudio(val, 'API_PAYLOAD', { name: nameVal, size: obj.size || 0 });
+                            const nameVal = obj['name'] || obj['title'] || obj['fileName'] || obj['songName'] || '';
+                            registerAudio(val, 'API_PAYLOAD', { name: nameVal, size: obj['size'] || 0 });
                         }
                     }
                 }
@@ -227,9 +246,9 @@
     }
 
     /**
-     * 处理AList列表响应
+     * 解析处理网盘响应数据并注册音频资源
      * 
-     * @param json AList列表响应对象
+     * @param {Object} json 网盘接口返回的响应对象
      */
     function handleAListResponse(json) {
         if (!json || json.code !== 200 || !json.data || !Array.isArray(json.data.content)) {
@@ -258,7 +277,7 @@
         if (audioItems.length === 0) {
             return;
         }
-        // 遍历音频文件并异步换取真实直链
+        // 遍历音频文件并构建直链注册到音频集合
         audioItems.forEach(item => {
             // 拼接完整路径
             const fullPath = (item.path && typeof item.path === 'string')
@@ -266,32 +285,13 @@
                 : `${currentPath.replace(/\/$/, '')}/${item.name}`;
             const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
             const fmt = item.name.split('.').pop().toUpperCase();
-            // 签名链接追加sign参数，无签名直接用直链
+            // 存在签名则追加签名参数否则直接使用直链
             const finalUrl = item.sign ? `${directUrl}?sign=${item.sign}` : directUrl;
             registerAudio(finalUrl, 'ALIST_LIST', {
                 name: item.name,
                 size: item.size || 0,
                 format: fmt
             });
-            // 已签名的链接无需再换取源链
-            if (item.sign) {
-                return;
-            }
-            try {
-                fetch(`${window.location.origin}/api/fs/get`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json;charset=utf-8' },
-                    body: JSON.stringify({ path: fullPath, password: '' })
-                }).then(r => r.json()).then(res => {
-                    if (res && res.code === 200 && res.data?.['raw_url']) {
-                        registerAudio(res.data['raw_url'], 'ALIST_RAW', {
-                            name: item.name,
-                            size: res.data.size || item.size || 0,
-                            format: fmt
-                        });
-                    }
-                }).catch(() => { });
-            } catch (e) { }
         });
     }
 
@@ -381,7 +381,12 @@
     calcCanvas.height = 8;
     const calcCtx = calcCanvas.getContext('2d', { willReadFrequently: true });
 
-    // 计算图片的差异哈希指纹以用于智能去重
+    /**
+     * 计算图片的差异哈希指纹以用于智能去重
+     * 
+     * @param {HTMLImageElement} imgEl 图片元素对象
+     * @returns {string} 差异哈希十六进制字符串
+     */
     function calculateDHash(imgEl) {
         try {
             calcCtx.clearRect(0, 0, 9, 8);
@@ -408,7 +413,12 @@
         }
     }
 
-    // 通过二进制魔数特征精准推导真实图片格式
+    /**
+     * 通过二进制魔数特征推导真实图片格式
+     * 
+     * @param {Uint8Array} bytes 图片二进制字节数组
+     * @returns {string} 推导出的图片格式名称
+     */
     function detectFormatFromBytes(bytes) {
         if (!bytes || bytes.length < 12) {
             return '';
@@ -435,7 +445,12 @@
         return '';
     }
 
-    // 使用油猴接口拉取图片计算二进制唯一指纹与真实格式
+    /**
+     * 拉取图片计算二进制唯一指纹与真实格式
+     * 
+     * @param {string} url 目标图片网络链接
+     * @returns {Promise} 包含哈希与真实格式的期约对象
+     */
     function fetchBinaryFingerprint(url) {
         return new Promise((resolve) => {
             if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
@@ -471,44 +486,26 @@
         });
     }
 
-    // data:图片前缀→格式名称映射表（按声明顺序匹配）
-    const IMAGE_DATA_PREFIX_MAP = [
-        ['data:image/svg', 'SVG'], ['data:image/png', 'PNG'],
-        ['data:image/jpeg', 'JPG'], ['data:image/jpg', 'JPG'],
-        ['data:image/webp', 'WEBP'], ['data:', 'DATA']
-    ];
-
-    // 图片后缀与查询参数→格式名称映射表（按声明顺序匹配）
-    const IMAGE_EXT_MAP = [
-        { fmt: 'PNG', extensions: ['.png'] },
-        { fmt: 'JPG', extensions: ['.jpg', '.jpeg'] },
-        { fmt: 'WEBP', extensions: ['.webp'] },
-        { fmt: 'SVG', extensions: ['.svg'] },
-        { fmt: 'GIF', extensions: ['.gif'] },
-        { fmt: 'AVIF', extensions: ['.avif'] }
-    ];
-
-    // 根据图片链接推断格式类型
+    /**
+     * 根据图片链接特征推断格式类型
+     * 
+     * @param {string} url 图片网络链接
+     * @returns {string} 推断出的图片格式大写名称
+     */
     function detectImageFormat(url) {
-        for (const [prefix, fmt] of IMAGE_DATA_PREFIX_MAP) {
-            if (url.startsWith(prefix)) {
-                return fmt;
-            }
+        const match = url.match(/data:image\/(svg|png|jpe?g|webp)|(?:\.|\b(?:format|f)=)(png|jpe?g|webp|svg|gif|avif)(?:[?&#]|$)/i);
+        if (match) {
+            const ext = (match[1] || match[2]).toLowerCase();
+            return ext === 'jpeg' ? 'JPG' : ext.toUpperCase();
         }
-        const cleanUrl = url.split('?')[0].toLowerCase();
-        const queryStr = (url.split('?')[1] || '').toLowerCase();
-        for (const { fmt, extensions } of IMAGE_EXT_MAP) {
-            const lowerFmt = fmt.toLowerCase();
-            if (extensions.some(ext => cleanUrl.endsWith(ext)) ||
-                queryStr.includes(`format=${lowerFmt}`) ||
-                queryStr.includes(`f=${lowerFmt}`)) {
-                return fmt;
-            }
-        }
-        return 'JPG';
+        return url.startsWith('data:') ? 'DATA' : 'JPG';
     }
 
-    // 动态刷新图片卡片上的真实格式标签
+    /**
+     * 动态刷新图片卡片上的真实格式标签
+     * 
+     * @param {Object} item 目标图片数据对象
+     */
     function updateCardFormatDisplay(item) {
         const cards = shadow.querySelectorAll('.img-card');
         cards.forEach(card => {
@@ -521,7 +518,12 @@
         });
     }
 
-    // 注册图片对象到全局存储集合
+    /**
+     * 注册图片对象到全局存储集合
+     * 
+     * @param {string} rawUrl 图片网络链接
+     * @param {string} source 触发捕获的来源标识
+     */
     function registerImage(rawUrl, source = 'DOM') {
         const url = normalizeUrl(rawUrl);
         if (!url || url.length < 5) {
@@ -590,7 +592,7 @@
         });
     }
 
-    // 深度扫描当前文档中的所有图片元素
+    /* 深度扫描当前文档中的所有图片元素 */
     function scanPageImages() {
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
@@ -616,17 +618,15 @@
             }
         });
         // 扫描带有背景样式的容器元素
-        const allNodes = document.querySelectorAll('div, section, article, a, span, header, footer, li, figure');
-        allNodes.forEach(node => {
-            const bg = window.getComputedStyle(node).backgroundImage;
-            if (bg && bg !== 'none' && bg.includes('url(')) {
-                const matches = bg.match(/url\(["']?([^"']+)["']?\)/g);
-                if (matches) {
-                    matches.forEach(m => {
-                        const clean = m.replace(/^url\(["']?/, '').replace(/["']?\)$/, '');
-                        registerImage(clean, 'CSS-BG');
-                    });
-                }
+        const bgNodes = document.querySelectorAll('[style*="background"], [style*="url("]');
+        bgNodes.forEach(node => {
+            const style = node.getAttribute('style') || '';
+            const matches = style.match(/url\(["']?([^"']+)["']?\)/gi);
+            if (matches) {
+                matches.forEach(m => {
+                    const clean = m.replace(/^url\(["']?/i, '').replace(/["']?\)$/i, '');
+                    registerImage(clean, 'CSS-BG');
+                });
             }
         });
         // 扫描并导出画布内容
@@ -642,7 +642,7 @@
         updateFloatingBadge();
     }
 
-    // 深度扫描当前文档中的所有音频标签与自定义播放器属性
+    /* 深度扫描当前文档中的所有音频标签与自定义播放器属性 */
     function scanPageAudios() {
         const audioElements = document.querySelectorAll('audio, audio source');
         audioElements.forEach(el => {
@@ -663,7 +663,7 @@
         updateFloatingBadge();
     }
 
-    // 挂载动态观察器实时捕获异步渲染的新媒体元素
+    /* 挂载动态观察器实时捕获异步渲染的新媒体元素 */
     function setupDynamicObserver() {
         let timer = null;
         const observer = new MutationObserver(() => {
@@ -695,6 +695,7 @@
     const container = document.createElement('div');
     container.id = 'ag-media-sniffer-root';
 
+    /* 将独立沙箱容器挂载到当前文档根节点 */
     function attachContainer() {
         if (!container.isConnected) {
             (document.body || document.documentElement).appendChild(container);
@@ -1315,13 +1316,19 @@
     toast.className = 'toast-notify';
     shadow.appendChild(toast);
 
+    /**
+     * 弹出底部半透明状态提示气泡
+     * 
+     * @param {string} msg 提示消息文本
+     * @param {number} duration 显示持续时间毫秒数
+     */
     function showToast(msg, duration = 2500) {
         toast.textContent = msg;
         toast.classList.add('active');
         setTimeout(() => toast.classList.remove('active'), duration);
     }
 
-    // 统一刷新悬浮球角标数量统计
+    /* 统一刷新悬浮球角标数量统计 */
     function updateFloatingBadge() {
         const badge = shadow.getElementById('ag-badge');
         if (badge) {
@@ -1332,7 +1339,7 @@
         }
     }
 
-    // 刷新弹窗头部选项卡数量与选中计数
+    /* 刷新弹窗头部选项卡数量与选中计数 */
     function updateModalHeaderCounters() {
         const tabImg = shadow.getElementById('ag-tab-img');
         const tabAudio = shadow.getElementById('ag-tab-audio');
@@ -1355,7 +1362,7 @@
         }
     }
 
-    // 动态统计当前模态下的格式并渲染筛选复选框
+    /* 动态统计当前模态下的格式并渲染筛选复选框 */
     function renderFormatFilters() {
         const container = shadow.getElementById('ag-format-checkboxes');
         const dedupWrap = shadow.getElementById('ag-dedup-label-wrap');
@@ -1369,7 +1376,14 @@
             const searchWrap = shadow.getElementById('ag-search-wrap');
             if (searchWrap) searchWrap.style.display = 'none';
             const formatCounts = new Map();
+            const seenHashes = new Set();
             imageStore.forEach(item => {
+                if (enableDeduplication && item.hash) {
+                    if (seenHashes.has(item.hash)) {
+                        return;
+                    }
+                    seenHashes.add(item.hash);
+                }
                 const fmt = item.format || 'OTHER';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
@@ -1427,7 +1441,11 @@
         }
     }
 
-    // 获取经过筛选过滤后的图片列表
+    /**
+     * 获取经过筛选过滤后的图片列表
+     * 
+     * @returns {Array<Object>} 过滤后的图片数据对象数组
+     */
     function getFilteredImages() {
         const result = [];
         const seenHashes = new Set();
@@ -1449,7 +1467,11 @@
         return result;
     }
 
-    // 获取经过筛选过滤后的音频列表
+    /**
+     * 获取经过筛选过滤后的音频列表
+     * 
+     * @returns {Array<Object>} 过滤后的音频数据对象数组
+     */
     function getFilteredAudios() {
         const result = [];
         audioStore.forEach(item => {
@@ -1464,7 +1486,11 @@
         return result;
     }
 
-    // 更新去重统计信息文字显示
+    /**
+     * 更新去重统计信息文字显示
+     * 
+     * @param {number} dupCount 当前识别出的重复项目总数
+     */
     function updateDeduplicationStat(dupCount) {
         const el = shadow.getElementById('ag-dedup-stat');
         if (el) {
@@ -1476,7 +1502,7 @@
         }
     }
 
-    // 渲染当前选项卡下的媒体画廊或音频列表
+    /* 渲染当前选项卡下的媒体画廊或音频列表 */
     function renderGallery() {
         renderFormatFilters();
         const gallery = shadow.getElementById('ag-gallery');
@@ -1511,6 +1537,8 @@
                 `;
                 const imgEl = card.querySelector('.img-thumb');
                 const dimSpan = card.querySelector('.img-dim');
+
+                /* 缩略图加载完成计算尺寸并更新显示 */
                 function onThumbLoad() {
                     if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
                         item.width = imgEl.naturalWidth;
@@ -1599,7 +1627,13 @@
         updateFloatingBadge();
     }
 
-    // 单个媒体文件原生下载
+    /**
+     * 单个媒体文件原生下载
+     * 
+     * @param {string} url 目标文件网络链接
+     * @param {string} name 自定义保存文件名
+     * @param {string} ext 目标文件拓展名
+     */
     function downloadSingleItem(url, name, ext) {
         const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
         if (url.startsWith('data:')) {
@@ -1630,7 +1664,7 @@
         }
     }
 
-    // 逐个下载选中的媒体文件
+    /* 逐个下载选中的媒体文件 */
     function downloadSelectedDirectly() {
         const isImg = currentTab === 'IMAGE';
         const selectedSet = isImg ? selectedImages : selectedAudios;
@@ -1653,7 +1687,12 @@
         });
     }
 
-    // 跨域拉取二进制数据并封装为 Promise
+    /**
+     * 跨域拉取二进制数据并封装为异步期约
+     * 
+     * @param {string} url 目标资源网络链接
+     * @returns {Promise} 包含响应数据与状态的期约对象
+     */
     function fetchBinary(url) {
         return new Promise((resolve, reject) => {
             if (url.startsWith('data:')) {
@@ -1702,7 +1741,12 @@
         crc32Table[i] = c;
     }
 
-    // 计算二进制数据的校验值
+    /**
+     * 计算二进制数据的循环冗余校验值
+     * 
+     * @param {Uint8Array} bytes 待校验的二进制字节数组
+     * @returns {number} 计算得到的校验数值
+     */
     function calculateCrc32(bytes) {
         let crc = ~0 >>> 0;
         for (let i = 0; i < bytes.length; i++) {
@@ -1711,7 +1755,12 @@
         return (~crc) >>> 0;
     }
 
-    // 原生零依赖压缩包生成引擎
+    /**
+     * 原生零依赖压缩包生成引擎
+     * 
+     * @param {Array<Object>} files 待打包的文件数据对象数组
+     * @returns {Uint8Array} 生成的压缩包二进制字节数组
+     */
     function createZipArchive(files) {
         const encoder = new TextEncoder();
         const parts = [];
@@ -1792,7 +1841,7 @@
         return result;
     }
 
-    // 将选中的全部图片或音频打包为压缩包下载
+    /* 将选中的全部图片或音频打包为压缩包下载 */
     async function downloadSelectedAsZip() {
         const isImg = currentTab === 'IMAGE';
         const selectedSet = isImg ? selectedImages : selectedAudios;
@@ -1855,7 +1904,12 @@
         showToast(`成功打包下载 ${successCount} 个文件`);
     }
 
-    // 触发原生锚点标签下载
+    /**
+     * 触发原生锚点标签下载
+     * 
+     * @param {string} blobUrl 待下载的二进制对象链接
+     * @param {string} fileName 保存的文件名
+     */
     function triggerAnchorDownload(blobUrl, fileName) {
         const downloadLink = document.createElement('a');
         downloadLink.href = blobUrl;
@@ -1887,6 +1941,11 @@
         fab.style.bottom = 'auto';
     }
 
+    /**
+     * 处理悬浮球全局指针拖拽位移
+     * 
+     * @param {PointerEvent} e 指针移动事件对象
+     */
     function onPointerMove(e) {
         if (!isDragging) {
             return;
@@ -1906,6 +1965,7 @@
         fab.style.bottom = 'auto';
     }
 
+    /* 处理悬浮球拖拽释放并持久化保存位置坐标 */
     function onPointerUp() {
         if (!isDragging) {
             return;
@@ -2044,7 +2104,7 @@
         }
     }
 
-    // 初始启动扫描与动态监听
+    /* 初始启动扫描与动态监听 */
     function init() {
         scanPageImages();
         scanPageAudios();

@@ -33,17 +33,23 @@
     const imageStore = new Map();
     // 存储所有已嗅探到的音频对象集合
     const audioStore = new Map();
-    // 记录上一次处理的AList目录路径
+    // 存储选中的图片链接集合
+    const selectedImages = new Set();
+    // 存储选中的音频链接集合
+    const selectedAudios = new Set();
+    // 存储已识别的图片格式集合
+    const knownImageFormats = new Set();
+    // 存储当前激活的图片格式筛选集合
+    const activeImageFormatFilters = new Set();
+    // 存储已识别的音频格式集合
+    const knownAudioFormats = new Set();
+    // 存储当前激活的音频格式筛选集合
+    const activeAudioFormatFilters = new Set();
+    // 记录上一次处理的网盘目录路径
     let lastAListPath = '';
     let currentTab = 'IMAGE';
     let isModalOpen = false;
-    let selectedImages = new Set();
-    let selectedAudios = new Set();
     let enableDeduplication = true;
-    let knownImageFormats = new Set();
-    let activeImageFormatFilters = new Set();
-    let knownAudioFormats = new Set();
-    let activeAudioFormatFilters = new Set();
     let audioSearchKeyword = '';
     let savedBodyOverflow = null;
     let currentPlayingAudio = null;
@@ -2168,13 +2174,7 @@
             }
             const url = selectedList[idx];
             const prefix = selectedList.length > 1 ? `[${idx + 1}/${selectedList.length}]` : '';
-            let targetUrl;
-            if (isImg) {
-                const item = imageStore.get(url);
-                targetUrl = (item && item.hdUrl) ? item.hdUrl : url;
-            } else {
-                targetUrl = url;
-            }
+            const targetUrl = isImg ? (imageStore.get(url)?.hdUrl || url) : url;
             const fileName = `${isImg ? 'images' : 'audios'}/${uniqueFileNames[idx]}`;
             let binary = null;
             try {

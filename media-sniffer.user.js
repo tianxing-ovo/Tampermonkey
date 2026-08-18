@@ -64,6 +64,15 @@
 
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
+    // 识别常见默认占位图与空白图特征
+    const PLACEHOLDER_IMG_REGEX = new RegExp(
+        '\\/(' +
+        'default[-_]?(img|image|thumb|cover|pic|avatar|video)|' +
+        'no[-_]?(img|image|pic|photo|cover)|' +
+        '(small|tiny|mini|transparent|pure|clear)?[-_]?(blank|pixel|spacer|placeholder|loading|1x1|66|lazyload)' +
+        ')\\.(jpe?g|png|webp|gif|svg)(\\?.*)?$',
+        'i'
+    );
 
     /**
      * 从网络链接或MIME类型推断规范的音频格式名称
@@ -119,7 +128,7 @@
             return '';
         }
         url = url.trim().replace(/^url\(["']?|["']?\)$/gi, '');
-        if (!url || /undefined|null|\[object/i.test(url)) {
+        if (!url || /undefined|null|\[object|url\(|\);|--[a-z0-9_-]+:/i.test(url)) {
             return '';
         }
         if (url.startsWith('data:') || url.startsWith('blob:')) {
@@ -543,6 +552,9 @@
         if (!url || url.length < 5) {
             return;
         }
+        if (PLACEHOLDER_IMG_REGEX.test(url)) {
+            return;
+        }
         if (url.startsWith('data:image/') && url.length < 150) {
             return;
         }
@@ -572,9 +584,17 @@
         imageStore.set(url, imgObj);
         // 异步预加载图片以获取真实自然宽高尺寸
         const tempImg = new Image();
+        tempImg.referrerPolicy = 'no-referrer';
         tempImg.onload = function () {
             imgObj.width = tempImg.naturalWidth || tempImg.width || 0;
             imgObj.height = tempImg.naturalHeight || tempImg.height || 0;
+            // 过滤主题微型矢量图标与占位小图
+            if (imgObj.width <= 32 && imgObj.height <= 32 && (url.includes('/themes/') || url.includes('/assets/') || url.endsWith('.svg'))) {
+                imageStore.delete(url);
+                selectedImages.delete(url);
+                updateFloatingBadge();
+                return;
+            }
             if (imgObj.width > 0 && imgObj.height > 0 && !imgObj.hash) {
                 imgObj.hash = calculateDHash(tempImg);
             }
@@ -585,8 +605,12 @@
             }
         };
         tempImg.onerror = function () {
-            imgObj.loaded = true;
+            imageStore.delete(url);
+            selectedImages.delete(url);
             updateFloatingBadge();
+            if (isModalOpen && currentTab === 'IMAGE') {
+                renderGallery();
+            }
         };
         tempImg.src = url;
         // 异步计算二进制指纹以实现去重与格式矫正
@@ -624,7 +648,7 @@
             for (const attr of possibleAttrs) {
                 const val = el.getAttribute(attr);
                 if (val) {
-                    if (/\/(66|blank|pixel|loading|placeholder|1x1|spacer)\.(gif|png|webp|svg)(\?.*)?$/i.test(val)) {
+                    if (PLACEHOLDER_IMG_REGEX.test(val)) {
                         continue;
                     }
                     if (attr === 'srcset') {
@@ -645,14 +669,14 @@
         const bgNodes = document.querySelectorAll('[style*="background"], [style*="url("]');
         bgNodes.forEach(node => {
             const style = node.getAttribute('style') || '';
-            const matches = style.match(/url\(["']?([^"']+)["']?\)/gi);
-            if (matches) {
-                const bgTitle = node.getAttribute('title') || node.getAttribute('aria-label') || '';
-                const cleanName = sanitizeFileName(bgTitle);
-                matches.forEach(m => {
-                    const clean = m.replace(/^url\(["']?/i, '').replace(/["']?\)$/i, '');
-                    registerImage(clean, 'CSS-BG', { name: cleanName });
-                });
+            const bgTitle = node.getAttribute('title') || node.getAttribute('aria-label') || '';
+            const cleanName = sanitizeFileName(bgTitle);
+            const matches = style.matchAll(/url\(\s*(?:['"]([^'"]+)['"]|([^'")\s;]+))\s*\)/gi);
+            for (const m of matches) {
+                const rawUrl = (m[1] || m[2] || '').trim();
+                if (rawUrl) {
+                    registerImage(rawUrl, 'CSS-BG', { name: cleanName });
+                }
             }
         });
         // 扫描并导出画布内容
@@ -1714,7 +1738,7 @@
                 const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
                 card.innerHTML = `
                     <div class="img-thumb-wrapper">
-                        <img class="img-thumb" src="${item.url}" alt="thumb" loading="lazy">
+                        <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
                         <div class="img-select-overlay">
                             <svg class="img-select-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
                         </div>
@@ -1740,10 +1764,24 @@
                         }
                     }
                 }
+
+                /* 缩略图加载失败时自动剔除死链卡片 */
+                function onThumbError() {
+                    selectedImages.delete(item.url);
+                    imageStore.delete(item.url);
+                    card.remove();
+                    updateModalHeaderCounters();
+                    updateFloatingBadge();
+                    if (gallery.children.length === 0) {
+                        gallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
+                    }
+                }
+
                 if (imgEl && imgEl.complete && imgEl.naturalWidth) {
                     onThumbLoad();
                 } else if (imgEl) {
                     imgEl.addEventListener('load', onThumbLoad);
+                    imgEl.addEventListener('error', onThumbError);
                 }
                 card.addEventListener('click', () => {
                     if (selectedImages.has(item.url)) {

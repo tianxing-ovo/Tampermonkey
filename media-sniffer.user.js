@@ -75,35 +75,6 @@
     );
 
     /**
-     * 从网络链接推断规范的音频格式名称
-     * 
-     * @param {string} url 音频网络链接
-     * @returns {string} 规范化的音频格式名称
-     */
-    function detectAudioFormat(url) {
-        const m = url.match(/\.(mp3|m4a|aac|flac|wav|ogg|opus)/i);
-        return m ? m[1].toUpperCase() : 'AUDIO';
-    }
-
-    /**
-     * 从网络链接中提取文件名
-     * 
-     * @param {string} url 目标网络链接
-     * @param {string} defaultName 默认回退文件名
-     * @returns {string} 提取出的文件名
-     */
-    function extractFileName(url, defaultName = 'audio_track') {
-        try {
-            const pathname = new URL(url, window.location.href).pathname;
-            const segment = pathname.split('/').filter(Boolean).pop();
-            if (segment) {
-                return decodeURIComponent(segment);
-            }
-        } catch (e) { }
-        return defaultName;
-    }
-
-    /**
      * 清洗文本为安全合法的文件名字符串
      * 
      * @param {string} rawName 原始文本字符串
@@ -197,12 +168,12 @@
         if (audioStore.has(url)) {
             return;
         }
-        const format = meta.format || detectAudioFormat(url);
+        const format = meta.format || '';
         if (format && !knownAudioFormats.has(format)) {
             knownAudioFormats.add(format);
             activeAudioFormatFilters.add(format);
         }
-        const name = meta.name || extractFileName(url, `audio_${audioStore.size + 1}.${format.toLowerCase()}`);
+        const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
         const audioObj = {
             url: url,
@@ -261,14 +232,14 @@
         // 遍历音频文件并构建直链注册到音频集合
         audioItems.forEach(item => {
             const directUrl = `${window.location.origin}/d${encodeURI(item.path || `/${item.name}`)}`;
-            const fmt = item.name.split('.').pop().toUpperCase();
+            const format = item.name.split('.').pop().toUpperCase();
             // 存在签名则追加签名参数否则直接使用直链
             const finalUrl = item.sign ? `${directUrl}?sign=${item.sign}` : directUrl;
             registerAudio(finalUrl, 'ALIST_LIST', {
                 name: item.name,
                 author: authorName,
                 size: item.size || 0,
-                format: fmt
+                format: format
             });
         });
     }
@@ -276,25 +247,29 @@
     /**
      * 解析网盘单文件详情数据并注册音频资源
      * 
-     * @param {Object} data 网盘接口响应数据对象
+     * @param {Object} json 网盘接口响应数据对象
      * @param {string} fallbackUrl 请求回退网络链接
      */
-    function handleAListSingleItem(data, fallbackUrl = '') {
-        if (!data?.data?.['raw_url'] || !data?.data?.name) {
+    function handleAListSingleItem(json, fallbackUrl = '') {
+        const item = json?.data;
+        if (!item?.['raw_url'] || !item?.name) {
             return;
         }
         // 仅拦截白名单音频文件
-        if (!AUDIO_EXT_REGEX.test(data.data.name)) {
+        if (!AUDIO_EXT_REGEX.test(item.name)) {
             return;
         }
-        const pathVal = data.data.path || fallbackUrl;
+        // 获取音频格式
+        const format = item.name.split('.').pop().toUpperCase();
+        const pathVal = item.path || fallbackUrl;
         const segments = (typeof pathVal === 'string' ? decodeURIComponent(pathVal) : '').split('/').filter(Boolean);
         const isFile = segments.length > 0 && segments[segments.length - 1].includes('.');
         const authorName = isFile ? (segments.length >= 2 ? segments[segments.length - 2] : '') : (segments.length >= 1 ? segments[segments.length - 1] : '');
-        registerAudio(data.data['raw_url'], 'ALIST_GET', {
-            name: data.data.name,
+        registerAudio(item['raw_url'], 'ALIST_GET', {
+            name: item.name,
             author: authorName,
-            size: data.data.size
+            size: item.size || 0,
+            format: format
         });
     }
 
@@ -1897,7 +1872,7 @@
             } else {
                 const item = audioStore.get(url);
                 const ext = (item?.format || 'mp3').toLowerCase();
-                const rawName = item?.name || extractFileName(url, `audio_${idx + 1}.${ext}`);
+                const rawName = item?.name || `audio_${idx + 1}.${ext}`;
                 const fileName = rawName.toLowerCase().endsWith(`.${ext}`) ? rawName : `${rawName}.${ext}`;
                 success = await downloadSingleItem(url, fileName, ext, '', prefix);
             }
@@ -2109,7 +2084,8 @@
                 return item?.name ? `${item.name}.${realExt}` : `img_${padIndex}.${realExt}`;
             } else {
                 const item = audioStore.get(url);
-                return item?.name || extractFileName(url, `audio_${idx + 1}.mp3`);
+                const ext = (item?.format || 'mp3').toLowerCase();
+                return item?.name || `audio_${idx + 1}.${ext}`;
             }
         });
         // 避免同名文件在压缩包内产生冲突

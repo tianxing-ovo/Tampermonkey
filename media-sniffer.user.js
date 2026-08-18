@@ -75,15 +75,14 @@
     );
 
     /**
-     * 从网络链接或MIME类型推断规范的音频格式名称
+     * 从网络链接推断规范的音频格式名称
      * 
-     * @param {string} url 音频链接
-     * @param {string} mime MIME类型字符串
+     * @param {string} url 音频网络链接
      * @returns {string} 规范化的音频格式名称
      */
-    function detectAudioFormat(url, mime = '') {
-        const m = `${url} ${mime}`.match(/\b(mp3|mpeg|m4a|mp4|flac|wav|aac|ogg|opus)\b/i);
-        return m ? m[1].toUpperCase().replace('MPEG', 'MP3').replace('MP4', 'M4A') : 'AUDIO';
+    function detectAudioFormat(url) {
+        const m = url.match(/\.(mp3|m4a|aac|flac|wav|ogg|opus)/i);
+        return m ? m[1].toUpperCase() : 'AUDIO';
     }
 
     /**
@@ -194,29 +193,21 @@
         if (!url || url.length < 5) {
             return;
         }
-        // 跳过m3u8流媒体播放列表
-        if (/\.m3u8(\?|$)/i.test(url) || (meta.mime && meta.mime.includes('mpegurl'))) {
-            return;
-        }
+        // 跳过相同音频
         if (audioStore.has(url)) {
-            const exist = audioStore.get(url);
-            if (meta.name && !exist.name) {
-                exist.name = meta.name;
-            }
-            if (meta.size && !exist.size) {
-                exist.size = meta.size;
-            }
             return;
         }
-        const format = meta.format || detectAudioFormat(url, meta.mime);
+        const format = meta.format || detectAudioFormat(url);
         if (format && !knownAudioFormats.has(format)) {
             knownAudioFormats.add(format);
             activeAudioFormatFilters.add(format);
         }
         const name = meta.name || extractFileName(url, `audio_${audioStore.size + 1}.${format.toLowerCase()}`);
+        const author = meta.author || '';
         const audioObj = {
             url: url,
             name: name,
+            author: author,
             format: format,
             source: source,
             size: meta.size || 0,
@@ -229,44 +220,6 @@
             updateModalHeaderCounters();
             if (currentTab === 'AUDIO') {
                 renderGallery();
-            }
-        }
-    }
-
-    /**
-     * 深度递归扫描对象中潜藏的音频网络链接
-     * 
-     * @param {*} obj 待扫描的任意数据载荷
-     * @param {number} depth 当前递归深度层级
-     */
-    function deepScanForMedia(obj, depth = 0) {
-        if (!obj || depth > 6) {
-            return;
-        }
-        if (typeof obj === 'string') {
-            if (AUDIO_EXT_REGEX.test(obj)) {
-                registerAudio(obj, 'API_PAYLOAD');
-            }
-            return;
-        }
-        if (Array.isArray(obj)) {
-            for (let i = 0; i < obj.length; i++) {
-                deepScanForMedia(obj[i], depth + 1);
-            }
-            return;
-        }
-        if (typeof obj === 'object') {
-            for (const key of Object.keys(obj)) {
-                const val = obj[key];
-                if (typeof val === 'string') {
-                    if (/^(url|src|playUrl|play_url|audioUrl|audio_url|streamUrl|file_url|raw_url|download_url)$/i.test(key)) {
-                        if (val.startsWith('http') && (AUDIO_EXT_REGEX.test(val) || val.includes('/audio/') || val.includes('/sound/'))) {
-                            const nameVal = obj['name'] || obj['title'] || obj['fileName'] || obj['songName'] || '';
-                            registerAudio(val, 'API_PAYLOAD', { name: nameVal, size: obj['size'] || 0 });
-                        }
-                    }
-                }
-                deepScanForMedia(val, depth + 1);
             }
         }
     }
@@ -297,6 +250,8 @@
             }
         }
         lastAListPath = currentPath;
+        const segments = currentPath.split('/').filter(Boolean);
+        const authorName = segments.length >= 2 ? segments[segments.length - 1] : (segments[0] || '');
         const list = json.data.content;
         // 过滤出音频文件
         const audioItems = list.filter(item => !item['is_dir'] && AUDIO_EXT_REGEX.test(item.name));
@@ -305,29 +260,48 @@
         }
         // 遍历音频文件并构建直链注册到音频集合
         audioItems.forEach(item => {
-            // 拼接完整路径
-            const fullPath = (item.path && typeof item.path === 'string')
-                ? item.path
-                : `${currentPath.replace(/\/$/, '')}/${item.name}`;
-            const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
+            const directUrl = `${window.location.origin}/d${encodeURI(item.path || `/${item.name}`)}`;
             const fmt = item.name.split('.').pop().toUpperCase();
             // 存在签名则追加签名参数否则直接使用直链
             const finalUrl = item.sign ? `${directUrl}?sign=${item.sign}` : directUrl;
             registerAudio(finalUrl, 'ALIST_LIST', {
                 name: item.name,
+                author: authorName,
                 size: item.size || 0,
                 format: fmt
             });
         });
     }
 
-    // 拦截全局网络请求以实时捕获音频链接与数据接口
+    /**
+     * 解析网盘单文件详情数据并注册音频资源
+     * 
+     * @param {Object} data 网盘接口响应数据对象
+     * @param {string} fallbackUrl 请求回退网络链接
+     */
+    function handleAListSingleItem(data, fallbackUrl = '') {
+        if (!data?.data?.['raw_url'] || !data?.data?.name) {
+            return;
+        }
+        // 仅拦截白名单音频文件
+        if (!AUDIO_EXT_REGEX.test(data.data.name)) {
+            return;
+        }
+        const pathVal = data.data.path || fallbackUrl;
+        const segments = (typeof pathVal === 'string' ? decodeURIComponent(pathVal) : '').split('/').filter(Boolean);
+        const isFile = segments.length > 0 && segments[segments.length - 1].includes('.');
+        const authorName = isFile ? (segments.length >= 2 ? segments[segments.length - 2] : '') : (segments.length >= 1 ? segments[segments.length - 1] : '');
+        registerAudio(data.data['raw_url'], 'ALIST_GET', {
+            name: data.data.name,
+            author: authorName,
+            size: data.data.size
+        });
+    }
+
+    // 拦截全局网络请求以实时捕获网盘数据接口
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
         const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
-        if (reqUrl && AUDIO_EXT_REGEX.test(reqUrl)) {
-            registerAudio(reqUrl, 'FETCH');
-        }
         const response = await originalFetch.apply(this, args);
         try {
             const clone = response.clone();
@@ -336,28 +310,18 @@
                 clone.json().then(data => {
                     if (reqUrl.includes('/api/fs/list')) {
                         handleAListResponse(data);
-                    } else if (reqUrl.includes('/api/fs/get') && data?.data?.['raw_url']) {
-                        registerAudio(data.data['raw_url'], 'ALIST_GET', {
-                            name: data.data.name,
-                            size: data.data.size
-                        });
-                    } else {
-                        deepScanForMedia(data);
+                    } else if (reqUrl.includes('/api/fs/get')) {
+                        handleAListSingleItem(data, reqUrl);
                     }
                 }).catch(() => { });
-            } else if (contentType.startsWith('audio/')) {
-                registerAudio(reqUrl, 'FETCH_MIME', { mime: contentType });
             }
         } catch (e) { }
         return response;
     };
 
-    // 拦截全局异步请求对象以捕获音频请求
+    // 拦截全局异步请求对象以捕获网盘数据接口
     const originalXhrOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
-        if (url && typeof url === 'string' && AUDIO_EXT_REGEX.test(url)) {
-            registerAudio(url, 'XHR');
-        }
         this.addEventListener('load', function () {
             try {
                 const ct = this.getResponseHeader('content-type') || '';
@@ -365,41 +329,14 @@
                     const data = JSON.parse(this.responseText);
                     if (typeof url === 'string' && url.includes('/api/fs/list')) {
                         handleAListResponse(data);
-                    } else {
-                        deepScanForMedia(data);
+                    } else if (typeof url === 'string' && url.includes('/api/fs/get')) {
+                        handleAListSingleItem(data, url);
                     }
-                } else if (ct.startsWith('audio/')) {
-                    registerAudio(url, 'XHR_MIME', { mime: ct });
                 }
             } catch (e) { }
         });
         return originalXhrOpen.apply(this, arguments);
     };
-
-    // 拦截音频构造函数以捕获内存中创建的音频实例
-    const OriginalAudio = window.Audio;
-    window.Audio = function (src) {
-        if (src) {
-            registerAudio(src, 'NEW_AUDIO');
-        }
-        return new OriginalAudio(src);
-    };
-    window.Audio.prototype = OriginalAudio.prototype;
-
-    // 拦截音频元素地址赋值操作
-    const audioSrcDescriptor = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src');
-    if (audioSrcDescriptor && audioSrcDescriptor.set) {
-        const rawSet = audioSrcDescriptor.set;
-        Object.defineProperty(HTMLMediaElement.prototype, 'src', {
-            set(val) {
-                if (val && typeof val === 'string' && (this.tagName === 'AUDIO' || AUDIO_EXT_REGEX.test(val))) {
-                    registerAudio(val, 'MEDIA_ELEMENT_SRC');
-                }
-                return rawSet.call(this, val);
-            },
-            get: audioSrcDescriptor.get
-        });
-    }
 
     // 离线复用的微型指纹计算画布
     const calcCanvas = document.createElement('canvas');
@@ -692,27 +629,6 @@
         updateFloatingBadge();
     }
 
-    /* 深度扫描当前文档中的所有音频标签与自定义播放器属性 */
-    function scanPageAudios() {
-        const audioElements = document.querySelectorAll('audio, audio source');
-        audioElements.forEach(el => {
-            const src = el.getAttribute('src') || el.currentSrc;
-            if (src) {
-                registerAudio(src, 'DOM_AUDIO');
-            }
-        });
-        const customNodes = document.querySelectorAll('[data-audio], [data-mp3], [data-sound], [data-url], [data-src]');
-        customNodes.forEach(node => {
-            ['data-audio', 'data-mp3', 'data-sound', 'data-url', 'data-src'].forEach(attr => {
-                const val = node.getAttribute(attr);
-                if (val && typeof val === 'string' && AUDIO_EXT_REGEX.test(val)) {
-                    registerAudio(val, 'DOM_DATASET');
-                }
-            });
-        });
-        updateFloatingBadge();
-    }
-
     /* 挂载动态观察器实时捕获异步渲染的新媒体元素 */
     function setupDynamicObserver() {
         let timer = null;
@@ -720,7 +636,6 @@
             clearTimeout(timer);
             timer = setTimeout(() => {
                 scanPageImages();
-                scanPageAudios();
             }, 400);
         });
         if (document.body) {
@@ -736,7 +651,6 @@
             clearTimeout(timer);
             timer = setTimeout(() => {
                 scanPageImages();
-                scanPageAudios();
             }, 500);
         }, { passive: true });
     }
@@ -1270,6 +1184,15 @@
             border-radius: 6px;
             text-transform: uppercase;
         }
+        .audio-author-name {
+            color: #334155;
+            font-weight: 500;
+            font-size: 12px;
+            max-width: 160px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
         /* 卡片底部信息条 */
         .img-meta {
             padding: 10px 12px;
@@ -1690,7 +1613,7 @@
             if (knownAudioFormats.has(item.format) && !activeAudioFormatFilters.has(item.format)) {
                 return;
             }
-            if (audioSearchKeyword && !`${item.name} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {
+            if (audioSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {
                 return;
             }
             result.push(item);
@@ -1821,8 +1744,8 @@
                             <div class="audio-name" title="点击复制文件名">${item.name}</div>
                             <div class="audio-meta-row">
                                 <span class="audio-format-badge">${item.format}</span>
+                                ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
                                 ${sizeStr ? `<span>${sizeStr}</span>` : ''}
-                                <span>来源: ${item.source}</span>
                             </div>
                         </div>
                     </div>
@@ -2366,7 +2289,6 @@
         document.body.style.overflow = 'hidden';
         fab.style.display = 'none';
         scanPageImages();
-        scanPageAudios();
         renderGallery();
     });
 
@@ -2463,7 +2385,6 @@
     /* 初始启动扫描与动态监听 */
     function init() {
         scanPageImages();
-        scanPageAudios();
         setupDynamicObserver();
     }
     if (document.readyState === 'loading') {

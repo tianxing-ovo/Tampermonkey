@@ -263,7 +263,7 @@
         const list = Array.isArray(json.data.content)
             ? json.data.content
             : (json.data.name ? [json.data] : []);
-        const audioItems = list.filter(item => !item['is_dir'] && AUDIO_EXT_REGEX.test(item.name));
+        const audioItems = list.filter(item => !item.is_dir && AUDIO_EXT_REGEX.test(item.name));
         if (audioItems.length === 0) {
             return;
         }
@@ -274,7 +274,7 @@
             const fullPath = item.path || `${normalizedParent}/${item.name}`;
             const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
             const format = item.name.split('.').pop().toUpperCase();
-            const finalUrl = item['raw_url'] || (item.sign ? `${directUrl}?sign=${item.sign}` : directUrl);
+            const finalUrl = item.raw_url || (item.sign ? `${directUrl}?sign=${item.sign}` : directUrl);
             // 从parentPath提取作者名
             const pathSegments = (typeof parentPath === 'string' ? decodeURIComponent(parentPath) : '').split('/').filter(Boolean);
             const authorName = pathSegments.length >= 2 ? pathSegments[1] : '';
@@ -282,7 +282,7 @@
                 name: item.name,
                 author: authorName,
                 size: item.size || 0,
-                format: format
+                format
             });
         });
     }
@@ -407,11 +407,11 @@
             if (typeof GM_xmlhttpRequest === 'function') {
                 const xhr = GM_xmlhttpRequest({
                     method: 'GET',
-                    url: url,
-                    responseType: responseType,
-                    headers: { 'Referer': window.location.href },
+                    url,
+                    responseType,
+                    headers: { Referer: window.location.href },
                     cookie: document.cookie,
-                    ['onprogress']: trackProgress ? (p) => updateProgressToast(p, tag) : undefined,
+                    onprogress: trackProgress ? (p) => updateProgressToast(p, tag) : undefined,
                     onload: (res) => {
                         if (trackProgress) {
                             activeDownloadXhr = null;
@@ -1838,7 +1838,7 @@
                 return false;
             }
             if (typeof GM_download === 'function') {
-                GM_download({ url: url, name: fileName, saveAs: false });
+                GM_download({ url, name: fileName, saveAs: false });
                 return true;
             }
             showToast(`${tag}下载失败：${e.message || '网络错误'}`);
@@ -1910,10 +1910,10 @@
         }
         const data = await gmRequest(url, {
             responseType: 'arraybuffer',
-            prefix: prefix,
+            prefix,
             trackProgress: true
         });
-        return { data: data };
+        return { data };
     }
 
     // 快速生成 CRC32 校验码查找表

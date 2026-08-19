@@ -141,6 +141,8 @@
 
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i;
+    // 识别图片文件常见后缀特征
+    const IMAGE_EXT_REGEX = /\.(jpe?g|png|webp|gif|svg|avif|bmp)$/i;
     // 识别常见默认占位图与空白图特征
     const PLACEHOLDER_IMG_REGEX = /\/(default[-_]?(img|image|thumb|cover|pic|avatar|video)|no[-_]?(img|image|pic|photo|cover)|(small|tiny|mini|transparent|pure|clear)?[-_]?(blank|pixel|spacer|placeholder|loading|1x1|66|lazyload))\.(jpe?g|png|webp|gif|svg)(\?.*)?$/i;
 
@@ -280,6 +282,38 @@
     }
 
     /**
+     * 构建网盘资源的完整网络链接
+     * 
+     * @param {Object} item 网盘资源条目对象
+     * @param {Object} json 接口原始响应对象
+     * @param {boolean} isGet 是否为单文件详情接口
+     * @returns {string} 构造的规范化网络直链
+     */
+    function buildAListDirectUrl(item, json, isGet) {
+        if (isGet && item['raw_url']) {
+            return item['raw_url'];
+        }
+        const rawParent = item.parent || json.data?.path || window.location.pathname || '';
+        let decodedParent;
+        try {
+            decodedParent = decodeURIComponent(rawParent);
+        } catch {
+            decodedParent = rawParent;
+        }
+        const normalizedParent = decodedParent === '/' ? '' : decodedParent;
+        let fullPath = `${normalizedParent}/${item.name}`;
+        if (item.path) {
+            try {
+                fullPath = decodeURIComponent(item.path);
+            } catch {
+                fullPath = item.path;
+            }
+        }
+        const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
+        return `${directUrl}?sign=${item.sign}`;
+    }
+
+    /**
      * 处理AList响应
      * 
      * @param {Object} json 响应数据对象
@@ -299,6 +333,8 @@
                 ? decodeURIComponent(json.data.path)
                 : decodeURIComponent(window.location.pathname);
             if (lastAListPath !== '' && lastAListPath !== currentPath) {
+                isImagesManuallyCleared = false;
+                clearImageState();
                 clearAudioState();
                 if (isModalOpen) {
                     renderGallery();
@@ -312,32 +348,26 @@
         const list = Array.isArray(json.data.content)
             ? json.data.content
             : (json.data.name ? [json.data] : []);
-        const audioItems = list.filter(item => !item.is_dir && (isGet ? item.raw_url : item.sign) && AUDIO_EXT_REGEX.test(item.name));
-        if (audioItems.length === 0) {
-            return;
-        }
         const source = isSearch ? 'ALIST_SEARCH' : (isGet ? 'ALIST_GET' : 'ALIST_LIST');
+        // 提取网盘中的图片资源
+        const imageItems = list.filter(item => !item.is_dir && (isGet ? item['raw_url'] : item.sign) && IMAGE_EXT_REGEX.test(item.name));
+        imageItems.forEach(item => {
+            const finalUrl = buildAListDirectUrl(item, json, isGet);
+            const cleanName = sanitizeFileName(item.name.replace(/\.[^.]+$/, ''));
+            registerImage(finalUrl, source, { name: cleanName });
+        });
+        // 提取网盘中的音频资源
+        const audioItems = list.filter(item => !item.is_dir && (isGet ? item['raw_url'] : item.sign) && AUDIO_EXT_REGEX.test(item.name));
         audioItems.forEach(item => {
-            const rawParent = item.parent || json.data.path || window.location.pathname || '';
+            const finalUrl = buildAListDirectUrl(item, json, isGet);
+            const format = item.name.split('.').pop().toUpperCase();
+            const rawParent = item.parent || json.data?.path || window.location.pathname || '';
             let decodedParent;
             try {
                 decodedParent = decodeURIComponent(rawParent);
             } catch {
                 decodedParent = rawParent;
             }
-            const normalizedParent = decodedParent === '/' ? '' : decodedParent;
-            let fullPath = `${normalizedParent}/${item.name}`;
-            if (item.path) {
-                try {
-                    fullPath = decodeURIComponent(item.path);
-                } catch {
-                    fullPath = item.path;
-                }
-            }
-            const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
-            const format = item.name.split('.').pop().toUpperCase();
-            const finalUrl = isGet ? item.raw_url : `${directUrl}?sign=${item.sign}`;
-            // 从decodedParent提取作者名
             const pathSegments = (typeof decodedParent === 'string' ? decodedParent : '').split('/').filter(Boolean);
             const authorName = pathSegments.length >= 2 ? pathSegments[1] : '';
             registerAudio(finalUrl, source, {
@@ -347,6 +377,8 @@
                 format
             });
         });
+        setTimeout(scanPageImages, 300);
+        setTimeout(scanPageImages, 800);
     }
 
     // 拦截fetch请求以捕获网盘数据接口
@@ -749,6 +781,45 @@
             clearTimeout(timer);
             timer = setTimeout(scanPageImages, 500);
         }, { passive: true });
+    }
+
+    /* 监听单页应用路由变更以自动重置清空状态并扫描新页面 */
+    function setupUrlChangeListener() {
+        let lastUrl = window.location.href;
+        const onUrlChange = () => {
+            if (window.location.href !== lastUrl) {
+                lastUrl = window.location.href;
+                isImagesManuallyCleared = false;
+                scanPageImages();
+                if (isModalOpen) {
+                    renderGallery();
+                } else {
+                    updateFloatingBadge();
+                }
+                setTimeout(scanPageImages, 400);
+                setTimeout(scanPageImages, 1000);
+            }
+        };
+        const rawPushState = history.pushState;
+        if (typeof rawPushState === 'function') {
+            history.pushState = function (...args) {
+                rawPushState.apply(this, args);
+                setTimeout(onUrlChange, 100);
+            };
+        }
+        const rawReplaceState = history.replaceState;
+        if (typeof rawReplaceState === 'function') {
+            history.replaceState = function (...args) {
+                rawReplaceState.apply(this, args);
+                setTimeout(onUrlChange, 100);
+            };
+        }
+        window.addEventListener('popstate', () => {
+            setTimeout(onUrlChange, 100);
+        });
+        window.addEventListener('hashchange', () => {
+            setTimeout(onUrlChange, 100);
+        });
     }
 
     // 创建独立沙箱节点防止宿主网页既有样式污染
@@ -2446,6 +2517,7 @@
     function init() {
         scanPageImages();
         setupDynamicObserver();
+        setupUrlChangeListener();
     }
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);

@@ -235,6 +235,10 @@
                 selectedAudios.clear();
                 knownAudioFormats.clear();
                 checkedAudioFormats.clear();
+                const audioGallery = shadow.getElementById('ag-gallery-audio');
+                if (audioGallery) {
+                    audioGallery.innerHTML = '';
+                }
                 updateFloatingBadge();
                 if (isModalOpen) {
                     updateModalHeaderCounters();
@@ -1261,7 +1265,8 @@
             </span>
         </div>
         <div class="modal-body">
-            <div class="gallery-grid" id="ag-gallery"></div>
+            <div class="gallery-grid" id="ag-gallery-image"></div>
+            <div class="audio-list" id="ag-gallery-audio" style="display:none"></div>
         </div>
     `;
     shadow.appendChild(modal);
@@ -1599,18 +1604,19 @@
 
     /* 渲染当前选项卡下的媒体画廊或音频列表 */
     function renderGallery() {
-        stopCurrentAudio();
         renderFormatFilters();
-        const gallery = shadow.getElementById('ag-gallery');
-        if (!gallery) {
+        const imgGallery = shadow.getElementById('ag-gallery-image');
+        const audioGallery = shadow.getElementById('ag-gallery-audio');
+        if (!imgGallery || !audioGallery) {
             return;
         }
         if (currentTab === 'IMAGE') {
-            gallery.className = 'gallery-grid';
+            imgGallery.style.display = 'grid';
+            audioGallery.style.display = 'none';
             const filtered = getFilteredImages();
-            gallery.innerHTML = '';
+            imgGallery.innerHTML = '';
             if (filtered.length === 0) {
-                gallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
+                imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
                 updateModalHeaderCounters();
                 return;
             }
@@ -1655,8 +1661,8 @@
                     card.remove();
                     updateModalHeaderCounters();
                     updateFloatingBadge();
-                    if (gallery.children.length === 0) {
-                        gallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
+                    if (imgGallery.children.length === 0) {
+                        imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
                     }
                 }
 
@@ -1676,78 +1682,103 @@
                     }
                     updateModalHeaderCounters();
                 });
-                gallery.appendChild(card);
+                imgGallery.appendChild(card);
             });
         } else {
-            gallery.className = 'audio-list';
+            imgGallery.style.display = 'none';
+            audioGallery.style.display = 'flex';
             const filtered = getFilteredAudios();
-            gallery.innerHTML = '';
-            if (filtered.length === 0) {
-                gallery.innerHTML = '<div class="gallery-empty">当前未发现音频资源</div>';
-                updateModalHeaderCounters();
-                return;
+            const filteredUrlSet = new Set(filtered.map(item => item.url));
+            // 移除空状态提示占位符
+            const emptyTip = audioGallery.querySelector('.gallery-empty');
+            if (emptyTip) {
+                emptyTip.remove();
             }
+            // 获取已存在的音频卡片映射
+            const existingCards = new Map();
+            audioGallery.querySelectorAll('.audio-card').forEach(card => {
+                existingCards.set(card.dataset.url, card);
+            });
+            // 遍历过滤后的音频数据并进行增量复用与显隐控制
             filtered.forEach(item => {
-                const card = document.createElement('div');
-                card.dataset.url = item.url;
-                card.className = 'audio-card' + (selectedAudios.has(item.url) ? ' selected' : '');
-                const sizeStr = formatBytes(item.size);
-                card.innerHTML = `
-                    <div class="audio-left">
-                        <div class="select-checkbox-box">
-                            <svg class="select-check-svg" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
-                        </div>
-                        <div class="audio-icon-box">
-                            <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
-                        </div>
-                        <div class="audio-info">
-                            <div class="audio-name" title="点击复制文件名">${item.name}</div>
-                            <div class="audio-meta-row">
-                                <span class="audio-format-badge">${item.format}</span>
-                                ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
-                                ${sizeStr ? `<span>${sizeStr}</span>` : ''}
+                let card = existingCards.get(item.url);
+                if (card) {
+                    card.style.display = '';
+                    card.classList.toggle('selected', selectedAudios.has(item.url));
+                } else {
+                    card = document.createElement('div');
+                    card.dataset.url = item.url;
+                    card.className = 'audio-card' + (selectedAudios.has(item.url) ? ' selected' : '');
+                    const sizeStr = formatBytes(item.size);
+                    card.innerHTML = `
+                        <div class="audio-left">
+                            <div class="select-checkbox-box">
+                                <svg class="select-check-svg" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                            </div>
+                            <div class="audio-icon-box">
+                                <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                            </div>
+                            <div class="audio-info">
+                                <div class="audio-name" title="点击复制文件名">${item.name}</div>
+                                <div class="audio-meta-row">
+                                    <span class="audio-format-badge">${item.format}</span>
+                                    ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
+                                    ${sizeStr ? `<span>${sizeStr}</span>` : ''}
+                                </div>
                             </div>
                         </div>
-                    </div>
-                    <div class="audio-right">
-                        <div class="audio-player-wrapper">
-                            <audio controls preload="none" src="${item.url}"></audio>
+                        <div class="audio-right">
+                            <div class="audio-player-wrapper">
+                                <audio controls preload="metadata" src="${item.url}"></audio>
+                            </div>
                         </div>
-                    </div>
-                `;
-                // 阻止文件名点击触发整行选择并复制到剪贴板
-                const audioNameEl = card.querySelector('.audio-name');
-                if (audioNameEl) {
-                    audioNameEl.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        copyToClipboard(item.name, '已复制文件名');
-                    });
-                }
-                // 阻止播放器控件点击触发整行选择并监听互斥播放事件
-                const audioPlayer = card.querySelector('audio');
-                if (audioPlayer) {
-                    audioPlayer.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                    });
-                    audioPlayer.addEventListener('play', () => {
-                        if (currentPlayingAudio && currentPlayingAudio !== audioPlayer) {
-                            currentPlayingAudio.pause();
-                        }
-                        currentPlayingAudio = audioPlayer;
-                    });
-                }
-                card.addEventListener('click', () => {
-                    if (selectedAudios.has(item.url)) {
-                        selectedAudios.delete(item.url);
-                        card.classList.remove('selected');
-                    } else {
-                        selectedAudios.add(item.url);
-                        card.classList.add('selected');
+                    `;
+                    // 阻止文件名点击触发整行选择并复制到剪贴板
+                    const audioNameEl = card.querySelector('.audio-name');
+                    if (audioNameEl) {
+                        audioNameEl.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            copyToClipboard(item.name, '已复制文件名');
+                        });
                     }
-                    updateModalHeaderCounters();
-                });
-                gallery.appendChild(card);
+                    // 阻止播放器控件点击触发整行选择并监听互斥播放事件
+                    const audioPlayer = card.querySelector('audio');
+                    if (audioPlayer) {
+                        audioPlayer.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                        });
+                        audioPlayer.addEventListener('play', () => {
+                            if (currentPlayingAudio && currentPlayingAudio !== audioPlayer) {
+                                currentPlayingAudio.pause();
+                            }
+                            currentPlayingAudio = audioPlayer;
+                        });
+                    }
+                    card.addEventListener('click', () => {
+                        if (selectedAudios.has(item.url)) {
+                            selectedAudios.delete(item.url);
+                            card.classList.remove('selected');
+                        } else {
+                            selectedAudios.add(item.url);
+                            card.classList.add('selected');
+                        }
+                        updateModalHeaderCounters();
+                    });
+                    audioGallery.appendChild(card);
+                }
             });
+            // 隐藏未命中过滤条件的已有音频卡片
+            existingCards.forEach((card, url) => {
+                if (!filteredUrlSet.has(url)) {
+                    card.style.display = 'none';
+                }
+            });
+            if (filtered.length === 0) {
+                const tip = document.createElement('div');
+                tip.className = 'gallery-empty';
+                tip.textContent = '当前未发现音频资源';
+                audioGallery.appendChild(tip);
+            }
         }
         updateModalHeaderCounters();
         updateFloatingBadge();

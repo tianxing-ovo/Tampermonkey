@@ -255,39 +255,29 @@
         });
     }
 
-    // 拦截全局网络请求以实时捕获网盘数据接口
+    // 拦截fetch请求以捕获网盘数据接口
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
         const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
         const response = await originalFetch.apply(this, args);
-        try {
-            const clone = response.clone();
-            const contentType = clone.headers.get('content-type') || '';
-            if (contentType.includes('application/json')) {
-                clone.json().then(data => {
-                    if (/\/api\/fs\/(list|search|get)/.test(reqUrl)) {
-                        handleAListResponse(data, reqUrl);
-                    }
-                }).catch(() => { });
-            }
-        } catch (e) { }
+        if (/\/api\/fs\/(list|search|get)/.test(reqUrl)) {
+            response.clone().json().then(data => {
+                handleAListResponse(data, reqUrl);
+            }).catch(() => { });
+        }
         return response;
     };
 
-    // 拦截全局异步请求对象以捕获网盘数据接口
+    // 拦截xhr请求以捕获网盘数据接口
     const originalXhrOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
-        this.addEventListener('load', function () {
-            try {
-                const ct = this.getResponseHeader('content-type') || '';
-                if (ct.includes('application/json') && this.responseText) {
-                    const data = JSON.parse(this.responseText);
-                    if (typeof url === 'string' && /\/api\/fs\/(list|search|get)/.test(url)) {
-                        handleAListResponse(data, url);
-                    }
-                }
-            } catch (e) { }
-        });
+        if (typeof url === 'string' && /\/api\/fs\/(list|search|get)/.test(url)) {
+            this.addEventListener('load', () => {
+                try {
+                    handleAListResponse(JSON.parse(this.responseText), url);
+                } catch (e) { }
+            });
+        }
         return originalXhrOpen.apply(this, arguments);
     };
 

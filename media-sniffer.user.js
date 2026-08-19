@@ -72,6 +72,17 @@
     let audioSearchKeyword = '';
     let savedBodyOverflow = null;
     let currentPlayingAudio = null;
+    let activeDownloadXhr = null;
+    let isDownloadCancelled = false;
+
+    // 界面复用的矢量图标路径字典常量
+    const SVG_PATHS = {
+        RADAR: 'M12 15c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0-8c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0-4C6.48 3 2 7.48 2 13c0 3.7 2.01 6.92 4.99 8.65l1.35-2.32C6.16 18.02 5 15.65 5 13c0-3.87 3.13-7 7-7s7 3.13 7 7c0 2.65-1.16 5.02-3.34 6.33l1.35 2.32C20 19.92 22 16.7 22 13c0-5.52-4.48-10-10-10z',
+        CHECK: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
+        CLOSE: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
+        SEARCH: 'M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z',
+        MUSIC: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'
+    };
 
     /* 停止当前正在播放的音频实例 */
     function stopCurrentAudio() {
@@ -190,9 +201,10 @@
         }
         cleanAudioUrls.add(cleanUrl);
         const format = meta.format || '';
-        if (format && !knownAudioFormats.has(format)) {
-            knownAudioFormats.add(format);
-            checkedAudioFormats.add(format);
+        const fmtKey = format || 'AUDIO';
+        if (!knownAudioFormats.has(fmtKey)) {
+            knownAudioFormats.add(fmtKey);
+            checkedAudioFormats.add(fmtKey);
         }
         const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
@@ -387,44 +399,94 @@
     }
 
     /**
+     * 底层跨域网络请求并支持进度反馈与中断控制
+     * 
+     * @param {string} url 目标资源网络链接
+     * @param {Object} options 请求配置选项对象
+     * @returns {Promise<any>} 响应二进制数据
+     */
+    function gmRequest(url, options = {}) {
+        return new Promise((resolve, reject) => {
+            const responseType = options.responseType || 'arraybuffer';
+            const prefix = options.prefix || '';
+            const trackProgress = !!options.trackProgress;
+            const tag = prefix ? `${prefix} ` : '';
+            if (typeof GM_xmlhttpRequest === 'function') {
+                const xhr = GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: url,
+                    responseType: responseType,
+                    headers: { 'Referer': window.location.href },
+                    cookie: document.cookie,
+                    ['onprogress']: trackProgress ? (p) => updateProgressToast(p, tag) : undefined,
+                    onload: (res) => {
+                        if (trackProgress) {
+                            activeDownloadXhr = null;
+                        }
+                        if (trackProgress && isDownloadCancelled) {
+                            reject(new Error('Cancelled'));
+                            return;
+                        }
+                        if (res.status >= 200 && res.status < 300 && res.response) {
+                            resolve(res.response);
+                        } else {
+                            reject(new Error(`HTTP ${res.status}`));
+                        }
+                    },
+                    ['onabort']: () => {
+                        if (trackProgress) {
+                            activeDownloadXhr = null;
+                        }
+                        reject(new Error('Cancelled'));
+                    },
+                    onerror: () => {
+                        if (trackProgress) {
+                            activeDownloadXhr = null;
+                        }
+                        reject(new Error('Network error'));
+                    }
+                });
+                if (trackProgress) {
+                    activeDownloadXhr = xhr;
+                }
+            } else {
+                fetch(url)
+                    .then(res => {
+                        if (!res.ok) {
+                            throw new Error(`HTTP ${res.status}`);
+                        }
+                        return responseType === 'blob' ? res.blob() : res.arrayBuffer();
+                    })
+                    .then(resolve)
+                    .catch(reject);
+            }
+        });
+    }
+
+    /**
      * 拉取图片计算二进制唯一指纹与真实格式
      * 
      * @param {string} url 目标图片网络链接
-     * @returns {Promise} 包含哈希与真实格式的期约对象
+     * @returns {Promise<Object>} 包含哈希与真实格式的期约对象
      */
-    function fetchBinaryFingerprint(url) {
-        return new Promise((resolve) => {
-            if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
-                resolve({ hash: '', format: '' });
-                return;
+    async function fetchBinaryFingerprint(url) {
+        if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
+            return { hash: '', format: '' };
+        }
+        try {
+            const buffer = await gmRequest(url, { responseType: 'arraybuffer' });
+            const bytes = new Uint8Array(buffer);
+            let h = 0x811c9dc5;
+            for (let i = 0; i < bytes.length; i++) {
+                h ^= bytes[i];
+                h = (h * 0x01000193) >>> 0;
             }
-            if (typeof GM_xmlhttpRequest === 'function') {
-                GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'arraybuffer',
-                    headers: { 'Referer': window.location.href },
-                    onload: (res) => {
-                        if (res.status >= 200 && res.status < 300 && res.response) {
-                            const bytes = new Uint8Array(res.response);
-                            let h = 0x811c9dc5;
-                            for (let i = 0; i < bytes.length; i++) {
-                                h ^= bytes[i];
-                                h = (h * 0x01000193) >>> 0;
-                            }
-                            const hash = `bin_${bytes.length}_${h.toString(16)}`;
-                            const realFormat = detectImageFormatFromBytes(bytes);
-                            resolve({ hash: hash, format: realFormat });
-                        } else {
-                            resolve({ hash: '', format: '' });
-                        }
-                    },
-                    onerror: () => resolve({ hash: '', format: '' })
-                });
-            } else {
-                resolve({ hash: '', format: '' });
-            }
-        });
+            const hash = `bin_${bytes.length}_${h.toString(16)}`;
+            const realFormat = detectImageFormatFromBytes(bytes);
+            return { hash: hash, format: realFormat };
+        } catch (e) {
+            return { hash: '', format: '' };
+        }
     }
 
     /**
@@ -469,12 +531,12 @@
             }
             return;
         }
-        // 检测图片格式
+        // 检测图片格式并记录至格式集合
         const format = detectImageFormatFromUrl(url);
-        // 首次发现新格式时记录并勾选
-        if (format && !knownImageFormats.has(format)) {
-            knownImageFormats.add(format);
-            checkedImageFormats.add(format);
+        const fmtKey = format || 'OTHER';
+        if (!knownImageFormats.has(fmtKey)) {
+            knownImageFormats.add(fmtKey);
+            checkedImageFormats.add(fmtKey);
         }
         const imgObj = {
             url: url,
@@ -521,12 +583,27 @@
         tempImg.src = url;
         // 异步计算二进制指纹以实现去重与格式补充
         fetchBinaryFingerprint(url).then(info => {
+            if (imageStore.get(url) !== imgObj) {
+                return;
+            }
             // 若初始未识别出格式且魔数成功识别则补充格式
             if (!imgObj.format && info.format) {
                 imgObj.format = info.format;
                 if (!knownImageFormats.has(info.format)) {
                     knownImageFormats.add(info.format);
                     checkedImageFormats.add(info.format);
+                }
+                // 若无任何未识别格式图片则清理历史 OTHER 键
+                let hasOther = false;
+                for (const item of imageStore.values()) {
+                    if (!item.format) {
+                        hasOther = true;
+                        break;
+                    }
+                }
+                if (!hasOther) {
+                    knownImageFormats.delete('OTHER');
+                    checkedImageFormats.delete('OTHER');
                 }
                 if (isModalOpen && currentTab === 'IMAGE') {
                     updateCardFormatDisplay(imgObj);
@@ -555,9 +632,6 @@
             for (const attr of possibleAttrs) {
                 const val = el.getAttribute(attr);
                 if (val) {
-                    if (PLACEHOLDER_IMG_REGEX.test(val)) {
-                        continue;
-                    }
                     if (attr === 'srcset') {
                         const parts = val.split(',');
                         parts.forEach(p => {
@@ -1227,7 +1301,7 @@
     fab.title = '打开媒体嗅探器';
     fab.innerHTML = `
         <svg class="fab-icon" viewBox="0 0 24 24">
-            <path d="M12 15c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0-8c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0-4C6.48 3 2 7.48 2 13c0 3.7 2.01 6.92 4.99 8.65l1.35-2.32C6.16 18.02 5 15.65 5 13c0-3.87 3.13-7 7-7s7 3.13 7 7c0 2.65-1.16 5.02-3.34 6.33l1.35 2.32C20 19.92 22 16.7 22 13c0-5.52-4.48-10-10-10z"/>
+            <path d="${SVG_PATHS.RADAR}"/>
         </svg>
         <span class="fab-badge" id="ag-badge">0</span>
     `;
@@ -1239,7 +1313,7 @@
         <div class="modal-header">
             <div class="header-left">
                 <div class="header-title">
-                    <svg viewBox="0 0 24 24"><path d="M12 15c1.66 0 3-1.34 3-3s-1.34-3-3-3-3 1.34-3 3 1.34 3 3 3zm0-8c2.76 0 5 2.24 5 5s-2.24 5-5 5-5-2.24-5-5 2.24-5 5-5zm0-4C6.48 3 2 7.48 2 13c0 3.7 2.01 6.92 4.99 8.65l1.35-2.32C6.16 18.02 5 15.65 5 13c0-3.87 3.13-7 7-7s7 3.13 7 7c0 2.65-1.16 5.02-3.34 6.33l1.35 2.32C20 19.92 22 16.7 22 13c0-5.52-4.48-10-10-10z"/></svg>
+                    <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.RADAR}"/></svg>
                     <span>媒体嗅探器</span>
                 </div>
                 <div class="tab-switcher">
@@ -1255,7 +1329,7 @@
                 <button class="btn btn-primary btn-download-selected" id="ag-btn-download-selected">下载</button>
                 <button class="btn btn-primary" id="ag-btn-download-zip">下载并打包</button>
                 <button class="btn-close" id="ag-btn-close">
-                    <svg style="width:20px;height:20px;fill:currentColor" viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+                    <svg style="width:20px;height:20px;fill:currentColor" viewBox="0 0 24 24"><path d="${SVG_PATHS.CLOSE}"/></svg>
                 </button>
             </div>
         </div>
@@ -1265,9 +1339,9 @@
                 <label class="filter-item filter-dedup-label" id="ag-dedup-label-wrap"><input type="checkbox" id="ag-filter-dedup" class="filter-checkbox" checked> 智能去重</label>
             </div>
             <span class="search-wrap" id="ag-search-wrap" style="display:none">
-                <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
+                <svg class="search-icon" viewBox="0 0 24 24"><path d="${SVG_PATHS.SEARCH}"/></svg>
                 <input type="text" id="ag-search-input" class="search-input" placeholder="搜索音频名称或作者">
-                <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
+                <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="${SVG_PATHS.CLOSE}"/></svg></span>
             </span>
         </div>
         <div class="modal-body">
@@ -1289,8 +1363,6 @@
     shadow.appendChild(toast);
 
     let toastTimer = null;
-    let activeDownloadXhr = null;
-    let isDownloadCancelled = false;
     let currentToastCancelCallback = null;
 
     toastCancelBtn.addEventListener('click', (e) => {
@@ -1525,7 +1597,8 @@
         const seenHashes = new Set();
         let dupCount = 0;
         imageStore.forEach(item => {
-            if (knownImageFormats.has(item.format) && !checkedImageFormats.has(item.format)) {
+            const fmt = item.format || 'OTHER';
+            if (knownImageFormats.has(fmt) && !checkedImageFormats.has(fmt)) {
                 return;
             }
             if (enableDeduplication && item.hash) {
@@ -1549,7 +1622,8 @@
     function getFilteredAudios() {
         const result = [];
         audioStore.forEach(item => {
-            if (knownAudioFormats.has(item.format) && !checkedAudioFormats.has(item.format)) {
+            const fmt = item.format || 'AUDIO';
+            if (knownAudioFormats.has(fmt) && !checkedAudioFormats.has(fmt)) {
                 return;
             }
             if (audioSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {
@@ -1591,73 +1665,72 @@
             imgGallery.innerHTML = '';
             if (filtered.length === 0) {
                 imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
-                updateModalHeaderCounters();
-                return;
-            }
-            filtered.forEach(item => {
-                const card = document.createElement('div');
-                card.dataset.url = item.url;
-                card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
-                const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
-                card.innerHTML = `
-                    <div class="img-thumb-wrapper">
-                        <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
-                        <div class="img-select-overlay">
-                            <svg class="img-select-check" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+            } else {
+                filtered.forEach(item => {
+                    const card = document.createElement('div');
+                    card.dataset.url = item.url;
+                    card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
+                    const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
+                    card.innerHTML = `
+                        <div class="img-thumb-wrapper">
+                            <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
+                            <div class="img-select-overlay">
+                                <svg class="img-select-check" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
+                            </div>
+                            <span class="media-format-badge">${item.format}</span>
                         </div>
-                        <span class="media-format-badge">${item.format}</span>
-                    </div>
-                    <div class="img-meta">
-                        <span class="img-dim">${dimText}</span>
-                    </div>
-                `;
-                const imgEl = card.querySelector('.img-thumb');
-                const dimSpan = card.querySelector('.img-dim');
+                        <div class="img-meta">
+                            <span class="img-dim">${dimText}</span>
+                        </div>
+                    `;
+                    const imgEl = card.querySelector('.img-thumb');
+                    const dimSpan = card.querySelector('.img-dim');
 
-                /* 缩略图加载完成计算尺寸并更新显示 */
-                function onThumbLoad() {
-                    if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
-                        item.width = imgEl.naturalWidth;
-                        item.height = imgEl.naturalHeight;
-                        if (!item.hash) {
-                            item.hash = calculateDHash(imgEl);
-                        }
-                        if (dimSpan) {
-                            dimSpan.textContent = `${item.width} × ${item.height}`;
+                    /* 缩略图加载完成计算尺寸并更新显示 */
+                    function onThumbLoad() {
+                        if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
+                            item.width = imgEl.naturalWidth;
+                            item.height = imgEl.naturalHeight;
+                            if (!item.hash) {
+                                item.hash = calculateDHash(imgEl);
+                            }
+                            if (dimSpan) {
+                                dimSpan.textContent = `${item.width} × ${item.height}`;
+                            }
                         }
                     }
-                }
 
-                /* 缩略图加载失败时自动剔除死链卡片 */
-                function onThumbError() {
-                    selectedImages.delete(item.url);
-                    imageStore.delete(item.url);
-                    card.remove();
-                    updateModalHeaderCounters();
-                    updateFloatingBadge();
-                    if (imgGallery.children.length === 0) {
-                        imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
-                    }
-                }
-
-                if (imgEl && imgEl.complete && imgEl.naturalWidth) {
-                    onThumbLoad();
-                } else if (imgEl) {
-                    imgEl.addEventListener('load', onThumbLoad);
-                    imgEl.addEventListener('error', onThumbError);
-                }
-                card.addEventListener('click', () => {
-                    if (selectedImages.has(item.url)) {
+                    /* 缩略图加载失败时自动剔除死链卡片 */
+                    function onThumbError() {
                         selectedImages.delete(item.url);
-                        card.classList.remove('selected');
-                    } else {
-                        selectedImages.add(item.url);
-                        card.classList.add('selected');
+                        imageStore.delete(item.url);
+                        card.remove();
+                        updateModalHeaderCounters();
+                        updateFloatingBadge();
+                        if (imgGallery.children.length === 0) {
+                            imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
+                        }
                     }
-                    updateModalHeaderCounters();
+
+                    if (imgEl && imgEl.complete && imgEl.naturalWidth) {
+                        onThumbLoad();
+                    } else if (imgEl) {
+                        imgEl.addEventListener('load', onThumbLoad);
+                        imgEl.addEventListener('error', onThumbError);
+                    }
+                    card.addEventListener('click', () => {
+                        if (selectedImages.has(item.url)) {
+                            selectedImages.delete(item.url);
+                            card.classList.remove('selected');
+                        } else {
+                            selectedImages.add(item.url);
+                            card.classList.add('selected');
+                        }
+                        updateModalHeaderCounters();
+                    });
+                    imgGallery.appendChild(card);
                 });
-                imgGallery.appendChild(card);
-            });
+            }
         } else {
             imgGallery.style.display = 'none';
             audioGallery.style.display = 'flex';
@@ -1687,10 +1760,10 @@
                     card.innerHTML = `
                         <div class="audio-left">
                             <div class="select-checkbox-box">
-                                <svg class="select-check-svg" viewBox="0 0 24 24"><path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+                                <svg class="select-check-svg" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
                             </div>
                             <div class="audio-icon-box">
-                                <svg viewBox="0 0 24 24"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>
+                                <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.MUSIC}"/></svg>
                             </div>
                             <div class="audio-info">
                                 <div class="audio-name" title="点击复制文件名">${item.name}</div>
@@ -1768,71 +1841,46 @@
      * @param {string} prefix 任务序数标识前缀
      * @returns {Promise<boolean>} 下载是否成功完成
      */
-    function downloadSingleItem(url, name, ext, fallbackUrl = '', prefix = '') {
-        return new Promise((resolve) => {
+    async function downloadSingleItem(url, name = '', ext = '', fallbackUrl = '', prefix = '') {
+        if (isDownloadCancelled) {
+            return false;
+        }
+        const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
+        const tag = prefix ? `${prefix} ` : '';
+        if (url.startsWith('data:')) {
+            triggerAnchorDownload(url, fileName);
+            return true;
+        }
+        try {
+            const blob = await gmRequest(url, {
+                responseType: 'blob',
+                prefix: prefix,
+                trackProgress: true
+            });
             if (isDownloadCancelled) {
-                resolve(false);
-                return;
+                return false;
             }
-            const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
-            const tag = prefix ? `${prefix} ` : '';
-            if (url.startsWith('data:')) {
-                triggerAnchorDownload(url, fileName);
-                resolve(true);
-                return;
+            triggerAnchorDownload(URL.createObjectURL(blob), fileName);
+            showToast(`${tag}下载完成`, 2000);
+            return true;
+        } catch (e) {
+            if (isDownloadCancelled) {
+                return false;
             }
-            // 先用GM_xmlhttpRequest携带Cookie拉取并校验响应状态再保存
-            if (typeof GM_xmlhttpRequest === 'function') {
-                activeDownloadXhr = GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'blob',
-                    headers: { 'Referer': window.location.href },
-                    cookie: document.cookie,
-                    ['onprogress']: (progress) => updateProgressToast(progress, tag),
-                    onload: (res) => {
-                        activeDownloadXhr = null;
-                        if (isDownloadCancelled) {
-                            resolve(false);
-                            return;
-                        }
-                        if (res.status >= 200 && res.status < 300) {
-                            triggerAnchorDownload(URL.createObjectURL(res.response), fileName);
-                            showToast(`${tag}下载完成`, 2000);
-                            resolve(true);
-                        } else if (fallbackUrl && fallbackUrl !== url) {
-                            downloadSingleItem(fallbackUrl, name, ext, '', prefix).then(resolve);
-                        } else {
-                            showToast(`${tag}下载失败：服务器返回 ${res.status}`);
-                            resolve(false);
-                        }
-                    },
-                    ['onabort']: () => {
-                        activeDownloadXhr = null;
-                        resolve(false);
-                    },
-                    onerror: () => {
-                        activeDownloadXhr = null;
-                        if (isDownloadCancelled) {
-                            resolve(false);
-                            return;
-                        }
-                        if (fallbackUrl && fallbackUrl !== url) {
-                            downloadSingleItem(fallbackUrl, name, ext, '', prefix).then(resolve);
-                        } else {
-                            showToast(`${tag}下载失败：网络错误`);
-                            resolve(false);
-                        }
-                    }
-                });
-            } else if (typeof GM_download === 'function') {
+            if (fallbackUrl && fallbackUrl !== url) {
+                return await downloadSingleItem(fallbackUrl, name, ext, '', prefix);
+            }
+            if (e.message && e.message.startsWith('HTTP ')) {
+                showToast(`${tag}下载失败：${e.message}`);
+                return false;
+            }
+            if (typeof GM_download === 'function') {
                 GM_download({ url: url, name: fileName, saveAs: false });
-                resolve(true);
-            } else {
-                triggerAnchorDownload(url, fileName);
-                resolve(true);
+                return true;
             }
-        });
+            showToast(`${tag}下载失败：${e.message || '网络错误'}`);
+            return false;
+        }
     }
 
     /* 采用串行异步队列逐个下载选中的媒体文件 */
@@ -1889,60 +1937,26 @@
      * @param {string} prefix 任务序数标识前缀
      * @returns {Promise<Object>} 包含响应二进制数据对象的期约
      */
-    function fetchBinary(url, prefix = '') {
-        return new Promise((resolve, reject) => {
-            if (isDownloadCancelled) {
-                reject(new Error('Cancelled'));
-                return;
+    async function fetchBinary(url, prefix = '') {
+        if (isDownloadCancelled) {
+            throw new Error('Cancelled');
+        }
+        if (url.startsWith('data:')) {
+            const parts = url.split(',');
+            const byteString = atob(parts[1]);
+            const ab = new ArrayBuffer(byteString.length);
+            const ia = new Uint8Array(ab);
+            for (let i = 0; i < byteString.length; i++) {
+                ia[i] = byteString.charCodeAt(i);
             }
-            const tag = prefix ? `${prefix} ` : '';
-            if (url.startsWith('data:')) {
-                const parts = url.split(',');
-                const byteString = atob(parts[1]);
-                const ab = new ArrayBuffer(byteString.length);
-                const ia = new Uint8Array(ab);
-                for (let i = 0; i < byteString.length; i++) {
-                    ia[i] = byteString.charCodeAt(i);
-                }
-                resolve({ data: ab });
-                return;
-            }
-            if (typeof GM_xmlhttpRequest === 'function') {
-                activeDownloadXhr = GM_xmlhttpRequest({
-                    method: 'GET',
-                    url: url,
-                    responseType: 'arraybuffer',
-                    headers: { 'Referer': window.location.href },
-                    cookie: document.cookie,
-                    ['onprogress']: (progress) => updateProgressToast(progress, tag),
-                    onload: (res) => {
-                        activeDownloadXhr = null;
-                        if (isDownloadCancelled) {
-                            reject(new Error('Cancelled'));
-                            return;
-                        }
-                        if (res.status >= 200 && res.status < 300) {
-                            resolve({ data: res.response });
-                        } else {
-                            reject(new Error('HTTP status ' + res.status));
-                        }
-                    },
-                    ['onabort']: () => {
-                        activeDownloadXhr = null;
-                        reject(new Error('Cancelled'));
-                    },
-                    onerror: () => {
-                        activeDownloadXhr = null;
-                        reject(new Error('Network error'));
-                    }
-                });
-            } else {
-                fetch(url)
-                    .then(res => res.arrayBuffer())
-                    .then(ab => resolve({ data: ab }))
-                    .catch(reject);
-            }
+            return { data: ab };
+        }
+        const data = await gmRequest(url, {
+            responseType: 'arraybuffer',
+            prefix: prefix,
+            trackProgress: true
         });
+        return { data: data };
     }
 
     // 快速生成 CRC32 校验码查找表

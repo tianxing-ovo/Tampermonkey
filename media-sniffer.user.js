@@ -196,80 +196,62 @@
     }
 
     /**
-     * 解析处理网盘响应数据并注册音频资源
+     * 处理AList响应
      * 
-     * @param {Object} json 网盘接口返回的响应对象
+     * @param {Object} json 响应数据对象
+     * @param {string} reqUrl 请求地址
      */
-    function handleAListResponse(json) {
-        if (!json || json.code !== 200 || !json.data || !Array.isArray(json.data.content)) {
+    function handleAListResponse(json, reqUrl = '') {
+        if (!json || json.code !== 200 || !json.data) {
             return;
         }
-        // 获取当前路径
-        const currentPath = json.data.path
-            ? decodeURIComponent(json.data.path)
-            : decodeURIComponent(window.location.pathname);
-        // 检测路径是否发生变化
-        if (lastAListPath !== '' && lastAListPath !== currentPath) {
-            audioStore.clear();
-            selectedAudios.clear();
-            knownAudioFormats.clear();
-            checkedAudioFormats.clear();
-            updateFloatingBadge();
-            if (isModalOpen) {
-                updateModalHeaderCounters();
-                renderGallery();
+        const isList = reqUrl.includes('/api/fs/list');
+        const isSearch = reqUrl.includes('/api/fs/search');
+        const isGet = reqUrl.includes('/api/fs/get');
+        // 目录列表切换时清空历史数据
+        if (isList) {
+            const currentPath = json.data.path
+                ? decodeURIComponent(json.data.path)
+                : decodeURIComponent(window.location.pathname);
+            if (lastAListPath !== '' && lastAListPath !== currentPath) {
+                audioStore.clear();
+                selectedAudios.clear();
+                knownAudioFormats.clear();
+                checkedAudioFormats.clear();
+                updateFloatingBadge();
+                if (isModalOpen) {
+                    updateModalHeaderCounters();
+                    renderGallery();
+                }
             }
+            lastAListPath = currentPath;
         }
-        lastAListPath = currentPath;
-        const segments = currentPath.split('/').filter(Boolean);
-        const authorName = segments.length >= 2 ? segments[segments.length - 1] : (segments[0] || '');
-        const list = json.data.content;
-        // 过滤出音频文件
+        // 归一化为统一条目数组
+        const list = Array.isArray(json.data.content)
+            ? json.data.content
+            : (json.data.name ? [json.data] : []);
         const audioItems = list.filter(item => !item['is_dir'] && AUDIO_EXT_REGEX.test(item.name));
         if (audioItems.length === 0) {
             return;
         }
-        // 遍历音频文件并构建直链注册到音频集合
+        const source = isSearch ? 'ALIST_SEARCH' : (isGet ? 'ALIST_GET' : 'ALIST_LIST');
         audioItems.forEach(item => {
-            const directUrl = `${window.location.origin}/d${encodeURI(item.path || `/${item.name}`)}`;
+            const parentPath = item.parent || json.data.path || window.location.pathname || '';
+            const normalizedParent = parentPath === '/' ? '' : parentPath;
+            const fullPath = item.path || `${normalizedParent}/${item.name}`;
+            const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
             const format = item.name.split('.').pop().toUpperCase();
-            // 存在签名则追加签名参数否则直接使用直链
-            const finalUrl = item.sign ? `${directUrl}?sign=${item.sign}` : directUrl;
-            registerAudio(finalUrl, 'ALIST_LIST', {
+            const finalUrl = item['raw_url'] || (item.sign ? `${directUrl}?sign=${item.sign}` : directUrl);
+            const pathVal = item.path || parentPath;
+            const segments = (typeof pathVal === 'string' ? decodeURIComponent(pathVal) : '').split('/').filter(Boolean);
+            const isFile = segments.length > 0 && segments[segments.length - 1].includes('.');
+            const authorName = isFile ? (segments.length >= 2 ? segments[segments.length - 2] : '') : (segments.length >= 1 ? segments[segments.length - 1] : '');
+            registerAudio(finalUrl, source, {
                 name: item.name,
                 author: authorName,
                 size: item.size || 0,
                 format: format
             });
-        });
-    }
-
-    /**
-     * 解析网盘单文件详情数据并注册音频资源
-     * 
-     * @param {Object} json 网盘接口响应数据对象
-     * @param {string} fallbackUrl 请求回退网络链接
-     */
-    function handleAListSingleItem(json, fallbackUrl = '') {
-        const item = json?.data;
-        if (!item?.['raw_url'] || !item?.name) {
-            return;
-        }
-        // 仅拦截白名单音频文件
-        if (!AUDIO_EXT_REGEX.test(item.name)) {
-            return;
-        }
-        // 获取音频格式
-        const format = item.name.split('.').pop().toUpperCase();
-        const pathVal = item.path || fallbackUrl;
-        const segments = (typeof pathVal === 'string' ? decodeURIComponent(pathVal) : '').split('/').filter(Boolean);
-        const isFile = segments.length > 0 && segments[segments.length - 1].includes('.');
-        const authorName = isFile ? (segments.length >= 2 ? segments[segments.length - 2] : '') : (segments.length >= 1 ? segments[segments.length - 1] : '');
-        registerAudio(item['raw_url'], 'ALIST_GET', {
-            name: item.name,
-            author: authorName,
-            size: item.size || 0,
-            format: format
         });
     }
 
@@ -283,10 +265,8 @@
             const contentType = clone.headers.get('content-type') || '';
             if (contentType.includes('application/json')) {
                 clone.json().then(data => {
-                    if (reqUrl.includes('/api/fs/list')) {
-                        handleAListResponse(data);
-                    } else if (reqUrl.includes('/api/fs/get')) {
-                        handleAListSingleItem(data, reqUrl);
+                    if (/\/api\/fs\/(list|search|get)/.test(reqUrl)) {
+                        handleAListResponse(data, reqUrl);
                     }
                 }).catch(() => { });
             }
@@ -302,10 +282,8 @@
                 const ct = this.getResponseHeader('content-type') || '';
                 if (ct.includes('application/json') && this.responseText) {
                     const data = JSON.parse(this.responseText);
-                    if (typeof url === 'string' && url.includes('/api/fs/list')) {
-                        handleAListResponse(data);
-                    } else if (typeof url === 'string' && url.includes('/api/fs/get')) {
-                        handleAListSingleItem(data, url);
+                    if (typeof url === 'string' && /\/api\/fs\/(list|search|get)/.test(url)) {
+                        handleAListResponse(data, url);
                     }
                 }
             } catch (e) { }
@@ -372,10 +350,10 @@
         if (!bytes || bytes.length < 12) {
             return '';
         }
-        if (bytes[0] === 0xff && bytes[1] === 0xd8) {
+        const head = String.fromCharCode(...bytes.slice(0, 12));
+        if (head.startsWith('\xff\xd8')) {
             return 'JPG';
         }
-        const head = String.fromCharCode(...bytes.slice(0, 12));
         if (head.startsWith('\x89PNG')) {
             return 'PNG';
         }
@@ -385,7 +363,7 @@
         if (head.startsWith('GIF')) {
             return 'GIF';
         }
-        if (bytes[0] === 0x3c && (head.includes('<svg') || head.includes('<?xml'))) {
+        if (head.startsWith('<svg') || head.startsWith('<?xml')) {
             return 'SVG';
         }
         return '';

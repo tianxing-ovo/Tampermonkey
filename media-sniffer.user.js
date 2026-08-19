@@ -86,14 +86,12 @@
 
     /* 停止当前正在播放的音频实例 */
     function stopCurrentAudio() {
-        if (currentPlayingAudio) {
-            currentPlayingAudio.pause();
-            currentPlayingAudio = null;
-        }
+        currentPlayingAudio?.pause();
+        currentPlayingAudio = null;
     }
 
     // 识别音频文件常见后缀特征
-    const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)(\?.*)?$/i;
+    const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i;
     // 识别常见默认占位图与空白图特征
     const PLACEHOLDER_IMG_REGEX = new RegExp(
         '\\/(' +
@@ -124,19 +122,19 @@
      * @returns {string} 规范化的绝对网络链接
      */
     function normalizeUrl(url) {
-        if (!url || typeof url !== 'string') {
+        if (typeof url !== 'string') {
             return '';
         }
         url = url.trim().replace(/^url\(["']?|["']?\)$/gi, '');
         if (!url || /undefined|null|\[object|url\(|\);|--[a-z0-9_-]+:/i.test(url)) {
             return '';
         }
-        if (url.startsWith('data:') || url.startsWith('blob:')) {
+        if (/^(?:data|blob):/i.test(url)) {
             return url;
         }
         try {
             return new URL(url, window.location.href).href;
-        } catch (e) {
+        } catch {
             return '';
         }
     }
@@ -148,19 +146,15 @@
      * @returns {string} 高清原图网络链接
      */
     function upgradeToHdUrl(url) {
-        if (!url || typeof url !== 'string') {
+        if (typeof url !== 'string' || /^(?:data|blob):/i.test(url)) {
             return url;
         }
-        if (url.startsWith('data:') || url.startsWith('blob:')) {
-            return url;
-        }
-        let hdUrl = url;
-        hdUrl = hdUrl.replace(/!(small|thumb|preview|middle|large|webp|\d+w|\d+h).*/i, '');
-        hdUrl = hdUrl.replace(/@\d+[wh]_\d+[wh].*/i, '');
-        hdUrl = hdUrl.replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2');
-        hdUrl = hdUrl.replace(/\/thumb\/\d+\//i, '/original/');
-        hdUrl = hdUrl.replace(/\.(jpg|jpeg|png)\.webp$/i, '.$1');
-        return hdUrl;
+        return url
+            .replace(/!(small|thumb|preview|middle|large|webp|\d+w|\d+h).*/i, '')
+            .replace(/@\d+[wh]_\d+[wh].*/i, '')
+            .replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2')
+            .replace(/\/thumb\/\d+\//i, '/original/')
+            .replace(/\.(jpg|jpeg|png)\.webp$/i, '.$1');
     }
 
     /**
@@ -489,20 +483,16 @@
     }
 
     /**
-     * 动态刷新图片卡片上的真实格式标签
+     * 更新卡片格式
      * 
-     * @param {Object} item 目标图片数据对象
+     * @param {Object} item 图片对象
      */
-    function updateCardFormatDisplay(item) {
-        const cards = shadow.querySelectorAll('.img-card');
-        cards.forEach(card => {
-            if (card.dataset.url === item.url) {
-                const badge = card.querySelector('.media-format-badge');
-                if (badge) {
-                    badge.textContent = item.format;
-                }
-            }
-        });
+    function updateCardFormat(item) {
+        // 获取目标图片卡片对应的格式徽标元素
+        const badge = shadow.querySelector(`.img-card[data-url="${CSS.escape(item.url)}"] .media-format-badge`);
+        if (badge) {
+            badge.textContent = item.format;
+        }
     }
 
     /**
@@ -605,7 +595,7 @@
                     checkedImageFormats.delete('OTHER');
                 }
                 if (isModalOpen && currentTab === 'IMAGE') {
-                    updateCardFormatDisplay(imgObj);
+                    updateCardFormat(imgObj);
                 }
             }
             if (info.hash) {
@@ -1930,7 +1920,7 @@
     }
 
     /**
-     * 跨域拉取二进制数据并支持实时传输进度与中断控制
+     * 拉取指定地址的二进制数据流
      * 
      * @param {string} url 目标资源网络链接
      * @param {string} prefix 任务序数标识前缀
@@ -1941,14 +1931,8 @@
             throw new Error('Cancelled');
         }
         if (url.startsWith('data:')) {
-            const parts = url.split(',');
-            const byteString = atob(parts[1]);
-            const ab = new ArrayBuffer(byteString.length);
-            const ia = new Uint8Array(ab);
-            for (let i = 0; i < byteString.length; i++) {
-                ia[i] = byteString.charCodeAt(i);
-            }
-            return { data: ab };
+            const res = await fetch(url);
+            return { data: await res.arrayBuffer() };
         }
         const data = await gmRequest(url, {
             responseType: 'arraybuffer',

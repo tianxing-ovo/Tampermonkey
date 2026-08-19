@@ -1416,20 +1416,78 @@
         }
     }
 
+    /**
+     * 渲染格式筛选复选框组并绑定联动事件
+     * 
+     * @param {HTMLElement} container 复选框容器元素
+     * @param {Map<string, number>} formatCounts 格式数量统计映射
+     * @param {Set<string>} checkedFormats 当前勾选的格式集合
+     * @param {string} emptyText 无格式时的提示文本
+     */
+    function renderFormatCheckboxGroup(container, formatCounts, checkedFormats, emptyText) {
+        if (formatCounts.size === 0) {
+            container.innerHTML = `<span class="format-count">${emptyText}</span>`;
+            return;
+        }
+        let checkedCount = 0;
+        formatCounts.forEach((count, fmt) => {
+            if (checkedFormats.has(fmt)) {
+                checkedCount++;
+            }
+        });
+        const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
+        const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
+        let html = '';
+        if (formatCounts.size > 1) {
+            html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
+        }
+        formatCounts.forEach((count, fmt) => {
+            const isChecked = checkedFormats.has(fmt) ? 'checked' : '';
+            html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
+        });
+        container.innerHTML = html;
+        const allCheckbox = container.querySelector('.filter-format-all-checkbox');
+        if (allCheckbox) {
+            allCheckbox.indeterminate = isIndeterminate;
+            allCheckbox.addEventListener('change', () => {
+                if (allCheckbox.checked) {
+                    formatCounts.forEach((_, fmt) => {
+                        checkedFormats.add(fmt);
+                    });
+                } else {
+                    checkedFormats.clear();
+                }
+                renderGallery();
+            });
+        }
+        container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
+            cb.addEventListener('change', () => {
+                if (cb.checked) {
+                    checkedFormats.add(cb.value);
+                } else {
+                    checkedFormats.delete(cb.value);
+                }
+                renderGallery();
+            });
+        });
+    }
+
     /* 动态统计当前模态下的格式并渲染筛选复选框 */
     function renderFormatFilters() {
         const container = shadow.getElementById('ag-format-checkboxes');
         const dedupWrap = shadow.getElementById('ag-dedup-label-wrap');
+        const searchWrap = shadow.getElementById('ag-search-wrap');
         if (!container) {
             return;
         }
+        const formatCounts = new Map();
         if (currentTab === 'IMAGE') {
             if (dedupWrap) {
                 dedupWrap.style.display = 'inline-flex';
             }
-            const searchWrap = shadow.getElementById('ag-search-wrap');
-            if (searchWrap) searchWrap.style.display = 'none';
-            const formatCounts = new Map();
+            if (searchWrap) {
+                searchWrap.style.display = 'none';
+            }
             const seenHashes = new Set();
             imageStore.forEach(item => {
                 if (enableDeduplication && item.hash) {
@@ -1441,109 +1499,19 @@
                 const fmt = item.format || 'OTHER';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-            if (formatCounts.size === 0) {
-                container.innerHTML = '<span class="format-count">暂无图片格式</span>';
-                return;
-            }
-            let checkedCount = 0;
-            formatCounts.forEach((count, fmt) => {
-                if (checkedImageFormats.has(fmt)) {
-                    checkedCount++;
-                }
-            });
-            const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
-            const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
-            let html = '';
-            if (formatCounts.size > 1) {
-                html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
-            }
-            formatCounts.forEach((count, fmt) => {
-                const isChecked = checkedImageFormats.has(fmt) ? 'checked' : '';
-                html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
-            });
-            container.innerHTML = html;
-            const allCheckbox = container.querySelector('.filter-format-all-checkbox');
-            if (allCheckbox) {
-                allCheckbox.indeterminate = isIndeterminate;
-                allCheckbox.addEventListener('change', () => {
-                    if (allCheckbox.checked) {
-                        formatCounts.forEach((_, fmt) => {
-                            checkedImageFormats.add(fmt);
-                        });
-                    } else {
-                        checkedImageFormats.clear();
-                    }
-                    renderGallery();
-                });
-            }
-            container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    if (cb.checked) {
-                        checkedImageFormats.add(cb.value);
-                    } else {
-                        checkedImageFormats.delete(cb.value);
-                    }
-                    renderGallery();
-                });
-            });
+            renderFormatCheckboxGroup(container, formatCounts, checkedImageFormats, '暂无图片格式');
         } else {
             if (dedupWrap) {
                 dedupWrap.style.display = 'none';
             }
-            const searchWrap = shadow.getElementById('ag-search-wrap');
             if (searchWrap) {
                 searchWrap.style.display = 'inline-flex';
             }
-            const formatCounts = new Map();
             audioStore.forEach(item => {
                 const fmt = item.format || 'AUDIO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-            if (formatCounts.size === 0) {
-                container.innerHTML = '<span class="format-count">暂无音频格式</span>';
-                return;
-            }
-            let checkedCount = 0;
-            formatCounts.forEach((count, fmt) => {
-                if (checkedAudioFormats.has(fmt)) {
-                    checkedCount++;
-                }
-            });
-            const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
-            const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
-            let html = '';
-            if (formatCounts.size > 1) {
-                html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
-            }
-            formatCounts.forEach((count, fmt) => {
-                const isChecked = checkedAudioFormats.has(fmt) ? 'checked' : '';
-                html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
-            });
-            container.innerHTML = html;
-            const allAudioCheckbox = container.querySelector('.filter-format-all-checkbox');
-            if (allAudioCheckbox) {
-                allAudioCheckbox.indeterminate = isIndeterminate;
-                allAudioCheckbox.addEventListener('change', () => {
-                    if (allAudioCheckbox.checked) {
-                        formatCounts.forEach((_, fmt) => {
-                            checkedAudioFormats.add(fmt);
-                        });
-                    } else {
-                        checkedAudioFormats.clear();
-                    }
-                    renderGallery();
-                });
-            }
-            container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
-                cb.addEventListener('change', () => {
-                    if (cb.checked) {
-                        checkedAudioFormats.add(cb.value);
-                    } else {
-                        checkedAudioFormats.delete(cb.value);
-                    }
-                    renderGallery();
-                });
-            });
+            renderFormatCheckboxGroup(container, formatCounts, checkedAudioFormats, '暂无音频格式');
         }
     }
 

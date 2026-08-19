@@ -1500,7 +1500,11 @@
         }
         container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
             cb.addEventListener('change', () => {
-                checkedFormats[cb.checked ? 'add' : 'delete'](cb.value);
+                if (cb.checked) {
+                    checkedFormats.add(cb.value);
+                } else {
+                    checkedFormats.delete(cb.value);
+                }
                 renderGallery();
             });
         });

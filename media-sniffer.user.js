@@ -1651,7 +1651,7 @@
 
                     /* 缩略图加载完成计算尺寸并更新显示 */
                     function onThumbLoad() {
-                        if (imgEl && imgEl.naturalWidth && imgEl.naturalHeight) {
+                        if (imgEl?.naturalWidth && imgEl?.naturalHeight) {
                             item.width = imgEl.naturalWidth;
                             item.height = imgEl.naturalHeight;
                             if (!item.hash) {
@@ -1675,7 +1675,7 @@
                         }
                     }
 
-                    if (imgEl && imgEl.complete && imgEl.naturalWidth) {
+                    if (imgEl?.complete && imgEl?.naturalWidth) {
                         onThumbLoad();
                     } else if (imgEl) {
                         imgEl.addEventListener('load', onThumbLoad);
@@ -1998,11 +1998,8 @@
             offset += localHeader.length + dataBytes.length;
         }
         const centralDirOffset = offset;
-        let centralDirSize = 0;
-        for (const entry of centralEntries) {
-            parts.push(entry);
-            centralDirSize += entry.length;
-        }
+        const centralDirSize = centralEntries.reduce((acc, entry) => acc + entry.length, 0);
+        parts.push(...centralEntries);
         const endRecord = new Uint8Array(22);
         const endView = new DataView(endRecord.buffer);
         endView.setUint32(0, 101010256, true);
@@ -2265,11 +2262,8 @@
             return;
         }
         const isAllSelected = filtered.every(item => selectedSet.has(item.url));
-        if (isAllSelected) {
-            filtered.forEach(item => selectedSet.delete(item.url));
-        } else {
-            filtered.forEach(item => selectedSet.add(item.url));
-        }
+        const action = isAllSelected ? 'delete' : 'add';
+        filtered.forEach(item => selectedSet[action](item.url));
         renderGallery();
     });
 

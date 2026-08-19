@@ -1810,7 +1810,7 @@
         try {
             const blob = await gmRequest(url, {
                 responseType: 'blob',
-                prefix: prefix,
+                prefix,
                 trackProgress: true
             });
             if (isDownloadCancelled) {

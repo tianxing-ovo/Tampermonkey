@@ -36,7 +36,7 @@
         if (['focusin', 'mousedown', 'touchstart', 'click', 'keydown'].includes(type)) {
             const wrappedListener = function (e) {
                 const path = e.composedPath?.() || [];
-                if (path.some(node => node?.id === 'ag-media-modal' || node?.id === 'ag-media-sniffer-root' || node === container)) {
+                if (path.includes(container)) {
                     return;
                 }
                 return typeof listener === 'function' ? listener.apply(this, arguments) : listener?.handleEvent?.(e);
@@ -93,14 +93,7 @@
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i;
     // 识别常见默认占位图与空白图特征
-    const PLACEHOLDER_IMG_REGEX = new RegExp(
-        '\\/(' +
-        'default[-_]?(img|image|thumb|cover|pic|avatar|video)|' +
-        'no[-_]?(img|image|pic|photo|cover)|' +
-        '(small|tiny|mini|transparent|pure|clear)?[-_]?(blank|pixel|spacer|placeholder|loading|1x1|66|lazyload)' +
-        ')\\.(jpe?g|png|webp|gif|svg)(\\?.*)?$',
-        'i'
-    );
+    const PLACEHOLDER_IMG_REGEX = /\/(default[-_]?(img|image|thumb|cover|pic|avatar|video)|no[-_]?(img|image|pic|photo|cover)|(small|tiny|mini|transparent|pure|clear)?[-_]?(blank|pixel|spacer|placeholder|loading|1x1|66|lazyload))\.(jpe?g|png|webp|gif|svg)(\?.*)?$/i;
 
     /**
      * 清洗文本为安全合法的文件名字符串
@@ -174,6 +167,20 @@
             return `${(bytes / 1024).toFixed(1)} KB`;
         }
         return `${(bytes / (1024 * 1024)).toFixed(2)} MB`;
+    }
+
+    /**
+     * 获取媒体对象的保存文件名
+     * 
+     * @param {Object} item 媒体数据对象
+     * @param {string} defaultName 默认后备文件名
+     * @param {string} defaultExt 默认文件扩展名
+     * @returns {string} 规范化文件名
+     */
+    function getItemFileName(item, defaultName, defaultExt) {
+        const ext = (item?.format || defaultExt).toLowerCase();
+        const name = item?.name || defaultName;
+        return name.toLowerCase().endsWith(`.${ext}`) ? name : `${name}.${ext}`;
     }
 
     /**
@@ -251,10 +258,10 @@
                 if (audioGallery) {
                     audioGallery.innerHTML = '';
                 }
-                updateFloatingBadge();
                 if (isModalOpen) {
-                    updateModalHeaderCounters();
                     renderGallery();
+                } else {
+                    updateFloatingBadge();
                 }
             }
             lastAListPath = currentPath;
@@ -405,6 +412,11 @@
             const trackProgress = !!options.trackProgress;
             const tag = prefix ? `${prefix} ` : '';
             if (typeof GM_xmlhttpRequest === 'function') {
+                const cleanup = () => {
+                    if (trackProgress) {
+                        activeDownloadXhr = null;
+                    }
+                };
                 const xhr = GM_xmlhttpRequest({
                     method: 'GET',
                     url,
@@ -413,9 +425,7 @@
                     cookie: document.cookie,
                     onprogress: trackProgress ? (p) => updateProgressToast(p, tag) : undefined,
                     onload: (res) => {
-                        if (trackProgress) {
-                            activeDownloadXhr = null;
-                        }
+                        cleanup();
                         if (trackProgress && isDownloadCancelled) {
                             reject(new Error('Cancelled'));
                             return;
@@ -427,15 +437,11 @@
                         }
                     },
                     ['onabort']: () => {
-                        if (trackProgress) {
-                            activeDownloadXhr = null;
-                        }
+                        cleanup();
                         reject(new Error('Cancelled'));
                     },
                     onerror: () => {
-                        if (trackProgress) {
-                            activeDownloadXhr = null;
-                        }
+                        cleanup();
                         reject(new Error('Network error'));
                     }
                 });
@@ -602,17 +608,19 @@
         });
     }
 
+    // 图片元素中可能存放图片地址的属性名称集合
+    const POSSIBLE_IMG_ATTRS = [
+        'data-original', 'data-src', 'data-actualsrc', 'data-url', 'zoomfile',
+        'file', 'original', 'srcset', 'src', 'data-lazy-src', 'xlink:href', 'href'
+    ];
+
     /* 深度扫描当前文档中的所有图片元素 */
     function scanPageImages() {
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
             const altText = el.getAttribute('alt') || el.getAttribute('title') || el.closest('a')?.getAttribute('title') || '';
             const cleanName = sanitizeFileName(altText);
-            const possibleAttrs = [
-                'data-original', 'data-src', 'data-actualsrc', 'data-url', 'zoomfile',
-                'file', 'original', 'srcset', 'src', 'data-lazy-src', 'xlink:href', 'href'
-            ];
-            for (const attr of possibleAttrs) {
+            for (const attr of POSSIBLE_IMG_ATTRS) {
                 const val = el.getAttribute(attr);
                 if (val) {
                     if (attr === 'srcset') {
@@ -663,14 +671,15 @@
             clearTimeout(timer);
             timer = setTimeout(scanPageImages, 400);
         });
+        const startObserve = () => {
+            if (document.body) {
+                observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
+            }
+        };
         if (document.body) {
-            observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
+            startObserve();
         } else {
-            document.addEventListener('DOMContentLoaded', () => {
-                if (document.body) {
-                    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
-                }
-            });
+            document.addEventListener('DOMContentLoaded', startObserve);
         }
         window.addEventListener('scroll', () => {
             clearTimeout(timer);
@@ -1425,30 +1434,42 @@
         }
     }
 
-    /* 统一刷新悬浮球角标数量统计 */
-    function updateFloatingBadge() {
+    /**
+     * 统一刷新悬浮球角标数量统计
+     * 
+     * @param {Array<Object>} [imgList] 预计算的图片列表
+     * @param {Array<Object>} [audioList] 预计算的音频列表
+     */
+    function updateFloatingBadge(imgList = null, audioList = null) {
         const badge = shadow.getElementById('ag-badge');
         if (badge) {
-            badge.textContent = String(getFilteredImages().length + getFilteredAudios().length);
+            const imgCount = imgList ? imgList.length : getFilteredImages().length;
+            const audioCount = audioList ? audioList.length : getFilteredAudios().length;
+            badge.textContent = String(imgCount + audioCount);
         }
     }
 
-    /* 刷新弹窗头部选项卡数量与选中计数 */
-    function updateModalHeaderCounters() {
+    /**
+     * 刷新弹窗头部选项卡数量与选中计数
+     * 
+     * @param {Array<Object>} [imgList] 预计算的图片列表
+     * @param {Array<Object>} [audioList] 预计算的音频列表
+     */
+    function updateModalHeaderCounters(imgList = null, audioList = null) {
         const tabImg = shadow.getElementById('ag-tab-img');
         const tabAudio = shadow.getElementById('ag-tab-audio');
         const countSpan = shadow.getElementById('ag-selected-count');
         const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
-        const imgList = getFilteredImages();
-        const audioList = getFilteredAudios();
+        const images = imgList || getFilteredImages();
+        const audios = audioList || getFilteredAudios();
         const isImg = currentTab === 'IMAGE';
         const selectedSet = isImg ? selectedImages : selectedAudios;
-        const activeList = isImg ? imgList : audioList;
+        const activeList = isImg ? images : audios;
         if (tabImg) {
-            tabImg.textContent = `图片 (${imgList.length})`;
+            tabImg.textContent = `图片 (${images.length})`;
         }
         if (tabAudio) {
-            tabAudio.textContent = `音频 (${audioList.length})`;
+            tabAudio.textContent = `音频 (${audios.length})`;
         }
         if (countSpan) {
             countSpan.textContent = `(已选中 ${selectedSet.size} 项)`;
@@ -1681,11 +1702,13 @@
                         const isSelected = selectedImages.has(item.url);
                         selectedImages[isSelected ? 'delete' : 'add'](item.url);
                         card.classList.toggle('selected', !isSelected);
-                        updateModalHeaderCounters();
+                        updateModalHeaderCounters(filtered, null);
                     });
                     imgGallery.appendChild(card);
                 });
             }
+            updateModalHeaderCounters(filtered, null);
+            updateFloatingBadge(filtered, null);
         } else {
             imgGallery.style.display = 'none';
             audioGallery.style.display = 'flex';
@@ -1760,7 +1783,7 @@
                         const isSelected = selectedAudios.has(item.url);
                         selectedAudios[isSelected ? 'delete' : 'add'](item.url);
                         card.classList.toggle('selected', !isSelected);
-                        updateModalHeaderCounters();
+                        updateModalHeaderCounters(null, filtered);
                     });
                     audioGallery.appendChild(card);
                 }
@@ -1777,9 +1800,9 @@
                 tip.textContent = '当前未发现音频资源';
                 audioGallery.appendChild(tip);
             }
+            updateModalHeaderCounters(null, filtered);
+            updateFloatingBadge(null, filtered);
         }
-        updateModalHeaderCounters();
-        updateFloatingBadge();
     }
 
     /**
@@ -1856,13 +1879,12 @@
             if (isImg) {
                 const item = imageStore.get(url);
                 const ext = (item?.format || 'jpg').toLowerCase();
-                const fileName = item?.name ? `${item.name}.${ext}` : `image_${idx + 1}.${ext}`;
+                const fileName = getItemFileName(item, `image_${idx + 1}`, 'jpg');
                 success = await downloadSingleItem(item?.hdUrl || url, fileName, ext, url, prefix);
             } else {
                 const item = audioStore.get(url);
                 const ext = (item?.format || 'mp3').toLowerCase();
-                const rawName = item?.name || `audio_${idx + 1}.${ext}`;
-                const fileName = rawName.toLowerCase().endsWith(`.${ext}`) ? rawName : `${rawName}.${ext}`;
+                const fileName = getItemFileName(item, `audio_${idx + 1}`, 'mp3');
                 success = await downloadSingleItem(url, fileName, ext, '', prefix);
             }
             if (isDownloadCancelled) {
@@ -2022,14 +2044,11 @@
         const fileNames = selectedList.map((url, idx) => {
             if (isImg) {
                 const item = imageStore.get(url);
-                const realExt = (item?.format || 'jpg').toLowerCase();
                 const padIndex = String(idx + 1).padStart(3, '0');
-                return item?.name ? `${item.name}.${realExt}` : `img_${padIndex}.${realExt}`;
-            } else {
-                const item = audioStore.get(url);
-                const ext = (item?.format || 'mp3').toLowerCase();
-                return item?.name || `audio_${idx + 1}.${ext}`;
+                return getItemFileName(item, `img_${padIndex}`, 'jpg');
             }
+            const item = audioStore.get(url);
+            return getItemFileName(item, `audio_${idx + 1}`, 'mp3');
         });
         // 避免同名文件在压缩包内产生冲突
         const nameOccurrences = new Map();

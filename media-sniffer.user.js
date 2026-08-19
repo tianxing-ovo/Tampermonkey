@@ -35,8 +35,8 @@
     Document.prototype.addEventListener = function (type, listener, options) {
         if (['focusin', 'mousedown', 'touchstart', 'click', 'keydown'].includes(type)) {
             const wrappedListener = function (e) {
-                const path = e.composedPath ? e.composedPath() : [];
-                if (path.some(node => node && (node.id === 'ag-media-modal' || node.id === 'ag-media-sniffer-root' || node === container))) {
+                const path = e.composedPath?.() || [];
+                if (path.some(node => node?.id === 'ag-media-modal' || node?.id === 'ag-media-sniffer-root' || node === container)) {
                     return;
                 }
                 return typeof listener === 'function' ? listener.apply(this, arguments) : listener?.handleEvent?.(e);
@@ -542,7 +542,7 @@
         // 异步预加载图片以获取真实自然宽高尺寸
         const tempImg = new Image();
         tempImg.referrerPolicy = 'no-referrer';
-        tempImg.onload = function () {
+        tempImg.onload = () => {
             imgObj.width = tempImg.naturalWidth || tempImg.width || 0;
             imgObj.height = tempImg.naturalHeight || tempImg.height || 0;
             // 过滤主题微型矢量图标与占位小图
@@ -561,7 +561,7 @@
                 renderGallery();
             }
         };
-        tempImg.onerror = function () {
+        tempImg.onerror = () => {
             imageStore.delete(url);
             selectedImages.delete(url);
             updateFloatingBadge();
@@ -2074,11 +2074,11 @@
             let binary = null;
             try {
                 binary = await fetchBinary(targetUrl, prefix);
-            } catch (e) {
+            } catch {
                 if (targetUrl !== url && !isDownloadCancelled) {
                     try {
                         binary = await fetchBinary(url, prefix);
-                    } catch (fallbackErr) { }
+                    } catch { }
                 }
             }
             if (isDownloadCancelled) {
@@ -2111,7 +2111,7 @@
                     onload: () => setTimeout(() => URL.revokeObjectURL(blobUrl), 30000),
                     onerror: () => triggerAnchorDownload(blobUrl, zipFileName)
                 });
-            } catch (e) {
+            } catch {
                 triggerAnchorDownload(blobUrl, zipFileName);
             }
         } else {

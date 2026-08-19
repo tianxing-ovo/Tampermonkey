@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.2.0
+// @version      1.2.1
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -80,6 +80,8 @@
     const MAX_METADATA_CONCURRENCY = 2;
     let isUserPlaying = false;
     let userPlayTimer = null;
+    let isImagesManuallyCleared = false;
+    let lastAListRawData = null;
 
     // 界面复用的矢量图标路径字典常量
     const SVG_PATHS = {
@@ -287,6 +289,7 @@
         if (!json || json.code !== 200 || !json.data) {
             return;
         }
+        lastAListRawData = { json, reqUrl };
         const isList = reqUrl.includes('/api/fs/list');
         const isSearch = reqUrl.includes('/api/fs/search');
         const isGet = reqUrl.includes('/api/fs/get');
@@ -296,17 +299,7 @@
                 ? decodeURIComponent(json.data.path)
                 : decodeURIComponent(window.location.pathname);
             if (lastAListPath !== '' && lastAListPath !== currentPath) {
-                audioStore.clear();
-                cleanAudioUrls.clear();
-                selectedAudios.clear();
-                knownAudioFormats.clear();
-                checkedAudioFormats.clear();
-                metadataQueue.length = 0;
-                activeMetadataCount = 0;
-                const audioGallery = shadow.getElementById('ag-gallery-audio');
-                if (audioGallery) {
-                    audioGallery.innerHTML = '';
-                }
+                clearAudioState();
                 if (isModalOpen) {
                     renderGallery();
                 } else {
@@ -571,6 +564,9 @@
      * @param {Object} meta 携带的附加元数据对象
      */
     function registerImage(rawUrl, source = 'DOM', meta = {}) {
+        if (isImagesManuallyCleared) {
+            return;
+        }
         const url = normalizeUrl(rawUrl);
         if (!url || url.length < 5) {
             return;
@@ -684,6 +680,9 @@
 
     /* 深度扫描当前文档中的所有图片元素 */
     function scanPageImages() {
+        if (isImagesManuallyCleared) {
+            return;
+        }
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
             const altText = el.getAttribute('alt') || el.getAttribute('title') || el.closest('a')?.getAttribute('title') || '';
@@ -1300,12 +1299,6 @@
             color: var(--text-muted);
             font-family: monospace;
         }
-        .gallery-empty {
-            text-align: center;
-            padding: 60px 20px;
-            color: var(--text-muted);
-            font-size: 15px;
-        }
         /* 进度提示浮层 */
         .toast-notify {
             position: fixed;
@@ -1373,6 +1366,8 @@
                 <span id="ag-dedup-stat" class="header-dedup-stat"></span>
             </div>
             <div class="header-actions">
+                <button class="btn" id="ag-btn-refresh">重新扫描</button>
+                <button class="btn" id="ag-btn-clear">清空</button>
                 <button class="btn" id="ag-btn-toggle-select">全选</button>
                 <button class="btn" id="ag-btn-copy-links">复制链接</button>
                 <button class="btn btn-primary btn-download-selected" id="ag-btn-download-selected">下载</button>
@@ -1547,11 +1542,10 @@
      * @param {HTMLElement} container 复选框容器元素
      * @param {Map<string, number>} formatCounts 格式数量统计映射
      * @param {Set<string>} checkedFormats 当前勾选的格式集合
-     * @param {string} emptyText 无格式时的提示文本
      */
-    function renderFormatCheckboxGroup(container, formatCounts, checkedFormats, emptyText) {
+    function renderFormatCheckboxGroup(container, formatCounts, checkedFormats) {
         if (formatCounts.size === 0) {
-            container.innerHTML = `<span class="format-count">${emptyText}</span>`;
+            container.innerHTML = '';
             return;
         }
         let checkedCount = 0;
@@ -1625,13 +1619,13 @@
                 const fmt = item.format || 'OTHER';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-            renderFormatCheckboxGroup(container, formatCounts, checkedImageFormats, '暂无图片格式');
+            renderFormatCheckboxGroup(container, formatCounts, checkedImageFormats);
         } else {
             audioStore.forEach(item => {
                 const fmt = item.format || 'AUDIO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
-            renderFormatCheckboxGroup(container, formatCounts, checkedAudioFormats, '暂无音频格式');
+            renderFormatCheckboxGroup(container, formatCounts, checkedAudioFormats);
         }
     }
 
@@ -1709,70 +1703,63 @@
             audioGallery.style.display = 'none';
             const filtered = getFilteredImages();
             imgGallery.innerHTML = '';
-            if (filtered.length === 0) {
-                imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
-            } else {
-                filtered.forEach(item => {
-                    const card = document.createElement('div');
-                    card.dataset.url = item.url;
-                    card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
-                    const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
-                    card.innerHTML = `
-                        <div class="img-thumb-wrapper">
-                            <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
-                            <div class="img-select-overlay">
-                                <svg class="img-select-check" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
-                            </div>
-                            <span class="media-format-badge">${item.format}</span>
+            filtered.forEach(item => {
+                const card = document.createElement('div');
+                card.dataset.url = item.url;
+                card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
+                const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
+                card.innerHTML = `
+                    <div class="img-thumb-wrapper">
+                        <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
+                        <div class="img-select-overlay">
+                            <svg class="img-select-check" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
                         </div>
-                        <div class="img-meta">
-                            <span class="img-dim">${dimText}</span>
-                        </div>
-                    `;
-                    const imgEl = card.querySelector('.img-thumb');
-                    const dimSpan = card.querySelector('.img-dim');
+                        <span class="media-format-badge">${item.format}</span>
+                    </div>
+                    <div class="img-meta">
+                        <span class="img-dim">${dimText}</span>
+                    </div>
+                `;
+                const imgEl = card.querySelector('.img-thumb');
+                const dimSpan = card.querySelector('.img-dim');
 
-                    /* 缩略图加载完成计算尺寸并更新显示 */
-                    function onThumbLoad() {
-                        if (imgEl?.naturalWidth && imgEl?.naturalHeight) {
-                            item.width = imgEl.naturalWidth;
-                            item.height = imgEl.naturalHeight;
-                            if (!item.hash) {
-                                item.hash = calculateDHash(imgEl);
-                            }
-                            if (dimSpan) {
-                                dimSpan.textContent = `${item.width} × ${item.height}`;
-                            }
+                /* 缩略图加载完成计算尺寸并更新显示 */
+                function onThumbLoad() {
+                    if (imgEl?.naturalWidth && imgEl?.naturalHeight) {
+                        item.width = imgEl.naturalWidth;
+                        item.height = imgEl.naturalHeight;
+                        if (!item.hash) {
+                            item.hash = calculateDHash(imgEl);
+                        }
+                        if (dimSpan) {
+                            dimSpan.textContent = `${item.width} × ${item.height}`;
                         }
                     }
+                }
 
-                    /* 缩略图加载失败时自动剔除死链卡片 */
-                    function onThumbError() {
-                        selectedImages.delete(item.url);
-                        imageStore.delete(item.url);
-                        card.remove();
-                        updateModalHeaderCounters();
-                        updateFloatingBadge();
-                        if (imgGallery.children.length === 0) {
-                            imgGallery.innerHTML = '<div class="gallery-empty">当前未发现匹配的图片资源</div>';
-                        }
-                    }
+                /* 缩略图加载失败时自动剔除死链卡片 */
+                function onThumbError() {
+                    selectedImages.delete(item.url);
+                    imageStore.delete(item.url);
+                    card.remove();
+                    updateModalHeaderCounters();
+                    updateFloatingBadge();
+                }
 
-                    if (imgEl?.complete && imgEl?.naturalWidth) {
-                        onThumbLoad();
-                    } else if (imgEl) {
-                        imgEl.addEventListener('load', onThumbLoad);
-                        imgEl.addEventListener('error', onThumbError);
-                    }
-                    card.addEventListener('click', () => {
-                        const isSelected = selectedImages.has(item.url);
-                        selectedImages[isSelected ? 'delete' : 'add'](item.url);
-                        card.classList.toggle('selected', !isSelected);
-                        updateModalHeaderCounters(filtered, null);
-                    });
-                    imgGallery.appendChild(card);
+                if (imgEl?.complete && imgEl?.naturalWidth) {
+                    onThumbLoad();
+                } else if (imgEl) {
+                    imgEl.addEventListener('load', onThumbLoad);
+                    imgEl.addEventListener('error', onThumbError);
+                }
+                card.addEventListener('click', () => {
+                    const isSelected = selectedImages.has(item.url);
+                    selectedImages[isSelected ? 'delete' : 'add'](item.url);
+                    card.classList.toggle('selected', !isSelected);
+                    updateModalHeaderCounters(filtered, null);
                 });
-            }
+                imgGallery.appendChild(card);
+            });
             updateModalHeaderCounters(filtered, null);
             updateFloatingBadge(filtered, null);
         } else {
@@ -1780,11 +1767,6 @@
             audioGallery.style.display = 'flex';
             const filtered = getFilteredAudios();
             const filteredUrlSet = new Set(filtered.map(item => item.url));
-            // 移除空状态提示占位符
-            const emptyTip = audioGallery.querySelector('.gallery-empty');
-            if (emptyTip) {
-                emptyTip.remove();
-            }
             // 获取已存在的音频卡片映射
             const existingCards = new Map();
             audioGallery.querySelectorAll('.audio-card').forEach(card => {
@@ -1876,12 +1858,6 @@
                     card.style.display = 'none';
                 }
             });
-            if (filtered.length === 0) {
-                const tip = document.createElement('div');
-                tip.className = 'gallery-empty';
-                tip.textContent = '当前未发现音频资源';
-                audioGallery.appendChild(tip);
-            }
             updateModalHeaderCounters(null, filtered);
             updateFloatingBadge(null, filtered);
         }
@@ -2339,6 +2315,73 @@
         modal.classList.remove('active');
         document.body.style.overflow = savedBodyOverflow;
         fab.style.display = '';
+    });
+
+    /* 清空当前图片状态与缓存 */
+    function clearImageState() {
+        imageStore.clear();
+        selectedImages.clear();
+        knownImageFormats.clear();
+        checkedImageFormats.clear();
+        const imgGallery = shadow.getElementById('ag-gallery-image');
+        if (imgGallery) {
+            imgGallery.innerHTML = '';
+        }
+    }
+
+    /* 清空当前音频状态与队列 */
+    function clearAudioState() {
+        stopCurrentAudio();
+        metadataQueue.length = 0;
+        activeMetadataCount = 0;
+        audioStore.clear();
+        cleanAudioUrls.clear();
+        selectedAudios.clear();
+        knownAudioFormats.clear();
+        checkedAudioFormats.clear();
+        const audioGallery = shadow.getElementById('ag-gallery-audio');
+        if (audioGallery) {
+            audioGallery.innerHTML = '';
+        }
+    }
+
+    shadow.getElementById('ag-btn-refresh')?.addEventListener('click', () => {
+        const isImg = currentTab === 'IMAGE';
+        if (isImg) {
+            isImagesManuallyCleared = false;
+            clearImageState();
+            scanPageImages();
+            renderGallery();
+            updateFloatingBadge();
+            updateModalHeaderCounters();
+            showToast('已重新扫描图片');
+        } else {
+            clearAudioState();
+            if (lastAListRawData) {
+                handleAListResponse(lastAListRawData.json, lastAListRawData.reqUrl);
+                showToast('已重新加载音频列表');
+            } else {
+                renderGallery();
+                updateFloatingBadge();
+                updateModalHeaderCounters();
+                showToast('暂无历史音频数据');
+            }
+        }
+    });
+
+    shadow.getElementById('ag-btn-clear')?.addEventListener('click', () => {
+        const isImg = currentTab === 'IMAGE';
+        if (isImg) {
+            isImagesManuallyCleared = true;
+            clearImageState();
+            showToast('已清空图片列表');
+        } else {
+            clearAudioState();
+            showToast('已清空音频列表');
+        }
+        renderGallery();
+        updateFloatingBadge();
+        updateModalHeaderCounters();
     });
 
     shadow.getElementById('ag-btn-toggle-select').addEventListener('click', () => {

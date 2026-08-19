@@ -204,11 +204,11 @@
         const author = meta.author || '';
         // 音频对象
         const audioObj = {
-            url: url,
-            name: name,
-            author: author,
-            format: format,
-            source: source,
+            url,
+            name,
+            author,
+            format,
+            source,
             size: meta.size || 0,
             duration: meta.duration || 0,
             addedAt: Date.now()
@@ -528,11 +528,11 @@
             checkedImageFormats.add(fmtKey);
         }
         const imgObj = {
-            url: url,
+            url,
             hdUrl: upgradeToHdUrl(url),
             name: meta.name || '',
-            format: format,
-            source: source,
+            format,
+            source,
             width: 0,
             height: 0,
             hash: '',
@@ -583,13 +583,7 @@
                     checkedImageFormats.add(info.format);
                 }
                 // 若无任何未识别格式图片则清理历史 OTHER 键
-                let hasOther = false;
-                for (const item of imageStore.values()) {
-                    if (!item.format) {
-                        hasOther = true;
-                        break;
-                    }
-                }
+                const hasOther = Array.from(imageStore.values()).some(item => !item.format);
                 if (!hasOther) {
                     knownImageFormats.delete('OTHER');
                     checkedImageFormats.delete('OTHER');
@@ -1693,13 +1687,13 @@
                         imgEl.addEventListener('error', onThumbError);
                     }
                     card.addEventListener('click', () => {
-                        if (selectedImages.has(item.url)) {
+                        const isSelected = selectedImages.has(item.url);
+                        if (isSelected) {
                             selectedImages.delete(item.url);
-                            card.classList.remove('selected');
                         } else {
                             selectedImages.add(item.url);
-                            card.classList.add('selected');
                         }
+                        card.classList.toggle('selected', !isSelected);
                         updateModalHeaderCounters();
                     });
                     imgGallery.appendChild(card);
@@ -2025,10 +2019,7 @@
         endView.setUint32(16, centralDirOffset, true);
         endView.setUint16(20, 0, true);
         parts.push(endRecord);
-        let totalLen = 0;
-        for (const p of parts) {
-            totalLen += p.length;
-        }
+        const totalLen = parts.reduce((acc, p) => acc + p.length, 0);
         const result = new Uint8Array(totalLen);
         let cur = 0;
         for (const p of parts) {
@@ -2051,7 +2042,7 @@
         const fileNames = selectedList.map((url, idx) => {
             if (isImg) {
                 const item = imageStore.get(url);
-                const realExt = (item && item.format ? item.format : 'jpg').toLowerCase();
+                const realExt = (item?.format || 'jpg').toLowerCase();
                 const padIndex = String(idx + 1).padStart(3, '0');
                 return item?.name ? `${item.name}.${realExt}` : `img_${padIndex}.${realExt}`;
             } else {

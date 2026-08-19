@@ -1438,19 +1438,22 @@
         const tabImg = shadow.getElementById('ag-tab-img');
         const tabAudio = shadow.getElementById('ag-tab-audio');
         const countSpan = shadow.getElementById('ag-selected-count');
+        const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
+        const imgList = getFilteredImages();
+        const audioList = getFilteredAudios();
+        const isImg = currentTab === 'IMAGE';
+        const selectedSet = isImg ? selectedImages : selectedAudios;
+        const activeList = isImg ? imgList : audioList;
         if (tabImg) {
-            tabImg.textContent = `图片 (${getFilteredImages().length})`;
+            tabImg.textContent = `图片 (${imgList.length})`;
         }
         if (tabAudio) {
-            tabAudio.textContent = `音频 (${getFilteredAudios().length})`;
+            tabAudio.textContent = `音频 (${audioList.length})`;
         }
-        const selectedSet = currentTab === 'IMAGE' ? selectedImages : selectedAudios;
         if (countSpan) {
             countSpan.textContent = `(已选中 ${selectedSet.size} 项)`;
         }
-        const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
         if (toggleBtn) {
-            const activeList = currentTab === 'IMAGE' ? getFilteredImages() : getFilteredAudios();
             const isAll = activeList.length > 0 && activeList.every(i => selectedSet.has(i.url));
             toggleBtn.textContent = isAll ? '取消全选' : '全选';
         }
@@ -2220,24 +2223,30 @@
     const tabImgBtn = shadow.getElementById('ag-tab-img');
     const tabAudioBtn = shadow.getElementById('ag-tab-audio');
 
-    if (tabImgBtn) {
-        tabImgBtn.addEventListener('click', () => {
+    /**
+     * 切换当前激活的媒体选项卡
+     * 
+     * @param {string} tab 目标选项卡标识
+     */
+    function switchTab(tab) {
+        if (currentTab === tab) {
+            return;
+        }
+        if (tab === 'IMAGE') {
             stopCurrentAudio();
-            currentTab = 'IMAGE';
-            tabImgBtn.classList.add('active');
-            tabAudioBtn.classList.remove('active');
-            renderGallery();
-        });
+        }
+        currentTab = tab;
+        if (tabImgBtn) {
+            tabImgBtn.classList.toggle('active', tab === 'IMAGE');
+        }
+        if (tabAudioBtn) {
+            tabAudioBtn.classList.toggle('active', tab === 'AUDIO');
+        }
+        renderGallery();
     }
 
-    if (tabAudioBtn) {
-        tabAudioBtn.addEventListener('click', () => {
-            currentTab = 'AUDIO';
-            tabAudioBtn.classList.add('active');
-            tabImgBtn.classList.remove('active');
-            renderGallery();
-        });
-    }
+    tabImgBtn?.addEventListener('click', () => switchTab('IMAGE'));
+    tabAudioBtn?.addEventListener('click', () => switchTab('AUDIO'));
 
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         stopCurrentAudio();

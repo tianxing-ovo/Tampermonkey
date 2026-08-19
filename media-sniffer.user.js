@@ -109,7 +109,7 @@
      * @returns {string} 清洗后的合法文件名
      */
     function sanitizeFileName(rawName) {
-        if (!rawName || typeof rawName !== 'string') {
+        if (typeof rawName !== 'string') {
             return '';
         }
         return rawName.trim().replace(/[\\/:*?"<>|\r\n\t]/g, '_').substring(0, 100);
@@ -463,7 +463,7 @@
      * @returns {Promise<Object>} 包含哈希与真实格式的期约对象
      */
     async function fetchBinaryFingerprint(url) {
-        if (!url || url.startsWith('data:') || url.startsWith('blob:')) {
+        if (!url || /^(?:data|blob):/i.test(url)) {
             return { hash: '', format: '' };
         }
         try {
@@ -477,7 +477,7 @@
             const hash = `bin_${bytes.length}_${h.toString(16)}`;
             const realFormat = detectImageFormatFromBytes(bytes);
             return { hash: hash, format: realFormat };
-        } catch (e) {
+        } catch {
             return { hash: '', format: '' };
         }
     }
@@ -657,7 +657,7 @@
                     const dataUrl = cvs.toDataURL('image/png');
                     registerImage(dataUrl, 'CANVAS');
                 }
-            } catch (e) { }
+            } catch { }
         });
         updateFloatingBadge();
     }
@@ -667,9 +667,7 @@
         let timer = null;
         const observer = new MutationObserver(() => {
             clearTimeout(timer);
-            timer = setTimeout(() => {
-                scanPageImages();
-            }, 400);
+            timer = setTimeout(scanPageImages, 400);
         });
         if (document.body) {
             observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ['src', 'style', 'class'] });
@@ -682,9 +680,7 @@
         }
         window.addEventListener('scroll', () => {
             clearTimeout(timer);
-            timer = setTimeout(() => {
-                scanPageImages();
-            }, 500);
+            timer = setTimeout(scanPageImages, 500);
         }, { passive: true });
     }
 
@@ -1375,11 +1371,7 @@
         }
         toastTextSpan.textContent = msg;
         currentToastCancelCallback = onCancel;
-        if (typeof onCancel === 'function') {
-            toastCancelBtn.style.display = 'inline-block';
-        } else {
-            toastCancelBtn.style.display = 'none';
-        }
+        toastCancelBtn.style.display = (typeof onCancel === 'function') ? 'inline-block' : 'none';
         toast.classList.add('active');
         if (duration > 0 && duration < 60000) {
             toastTimer = setTimeout(() => {
@@ -1393,11 +1385,9 @@
     function cancelDownload() {
         isDownloadCancelled = true;
         currentToastCancelCallback = null;
-        if (activeDownloadXhr && typeof activeDownloadXhr.abort === 'function') {
-            try {
-                activeDownloadXhr.abort();
-            } catch (e) { }
-        }
+        try {
+            activeDownloadXhr?.abort?.();
+        } catch { }
         activeDownloadXhr = null;
         showToast('已取消下载', 2000);
     }
@@ -1435,8 +1425,8 @@
         }
         if (typeof GM_setClipboard === 'function') {
             GM_setClipboard(text);
-        } else if (navigator.clipboard) {
-            navigator.clipboard.writeText(text).catch(() => { });
+        } else {
+            navigator.clipboard?.writeText(text).catch(() => { });
         }
         if (successMsg) {
             showToast(successMsg);

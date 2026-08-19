@@ -345,7 +345,7 @@
                 hex += parseInt(hashBinary.substring(i, i + 4), 2).toString(16);
             }
             return hex;
-        } catch (e) {
+        } catch {
             // 遇到跨域限制时回退为尺寸哈希
             return `dim_${imgEl.naturalWidth || 0}x${imgEl.naturalHeight || 0}`;
         }
@@ -1437,10 +1437,7 @@
     function updateFloatingBadge() {
         const badge = shadow.getElementById('ag-badge');
         if (badge) {
-            const filteredImg = getFilteredImages().length;
-            const filteredAudio = getFilteredAudios().length;
-            const total = filteredImg + filteredAudio;
-            badge.textContent = String(total);
+            badge.textContent = String(getFilteredImages().length + getFilteredAudios().length);
         }
     }
 
@@ -1621,11 +1618,9 @@
     function updateDeduplicationStat(dupCount) {
         const el = shadow.getElementById('ag-dedup-stat');
         if (el) {
-            if (currentTab === 'IMAGE' && enableDeduplication && dupCount > 0) {
-                el.textContent = `(已智能去重 ${dupCount} 张)`;
-            } else {
-                el.textContent = '';
-            }
+            el.textContent = (currentTab === 'IMAGE' && enableDeduplication && dupCount > 0)
+                ? `(已智能去重 ${dupCount} 张)`
+                : '';
         }
     }
 
@@ -2165,7 +2160,7 @@
 
     // 从持久化存储恢复悬浮球的历史位置
     const savedFabPos = (typeof GM_getValue === 'function') ? GM_getValue('ag_fab_pos', null) : null;
-    if (savedFabPos && savedFabPos.x !== undefined && savedFabPos.y !== undefined) {
+    if (savedFabPos?.x !== undefined && savedFabPos?.y !== undefined) {
         const maxX = window.innerWidth - 64;
         const maxY = window.innerHeight - 64;
         const posX = Math.max(10, Math.min(savedFabPos.x, maxX));

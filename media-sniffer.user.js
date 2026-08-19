@@ -476,7 +476,7 @@
             }
             const hash = `bin_${bytes.length}_${h.toString(16)}`;
             const realFormat = detectImageFormatFromBytes(bytes);
-            return { hash: hash, format: realFormat };
+            return { hash, format: realFormat };
         } catch {
             return { hash: '', format: '' };
         }
@@ -1346,9 +1346,7 @@
 
     toastCancelBtn.addEventListener('click', (e) => {
         e.stopPropagation();
-        if (typeof currentToastCancelCallback === 'function') {
-            currentToastCancelCallback();
-        }
+        currentToastCancelCallback?.();
     });
 
     /**
@@ -1518,13 +1516,14 @@
             return;
         }
         const formatCounts = new Map();
-        if (currentTab === 'IMAGE') {
-            if (dedupWrap) {
-                dedupWrap.style.display = 'inline-flex';
-            }
-            if (searchWrap) {
-                searchWrap.style.display = 'none';
-            }
+        const isImg = currentTab === 'IMAGE';
+        if (dedupWrap) {
+            dedupWrap.style.display = isImg ? 'inline-flex' : 'none';
+        }
+        if (searchWrap) {
+            searchWrap.style.display = isImg ? 'none' : 'inline-flex';
+        }
+        if (isImg) {
             const seenHashes = new Set();
             imageStore.forEach(item => {
                 if (enableDeduplication && item.hash) {
@@ -1538,12 +1537,6 @@
             });
             renderFormatCheckboxGroup(container, formatCounts, checkedImageFormats, '暂无图片格式');
         } else {
-            if (dedupWrap) {
-                dedupWrap.style.display = 'none';
-            }
-            if (searchWrap) {
-                searchWrap.style.display = 'inline-flex';
-            }
             audioStore.forEach(item => {
                 const fmt = item.format || 'AUDIO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);

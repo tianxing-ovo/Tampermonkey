@@ -74,6 +74,12 @@
     let currentPlayingAudio = null;
     let activeDownloadXhr = null;
     let isDownloadCancelled = false;
+    // 存储等待探测元数据的音频元素队列
+    const metadataQueue = [];
+    let activeMetadataCount = 0;
+    const MAX_METADATA_CONCURRENCY = 2;
+    let isUserPlaying = false;
+    let userPlayTimer = null;
 
     // 界面复用的矢量图标路径字典常量
     const SVG_PATHS = {
@@ -88,6 +94,47 @@
     function stopCurrentAudio() {
         currentPlayingAudio?.pause();
         currentPlayingAudio = null;
+    }
+
+    /* 调度后台低并发音频元数据探测队列 */
+    function processMetadataQueue() {
+        while (!isUserPlaying && activeMetadataCount < MAX_METADATA_CONCURRENCY && metadataQueue.length > 0) {
+            const audioEl = metadataQueue.shift();
+            if (!audioEl || !audioEl.isConnected || audioEl.preload === 'metadata' || audioEl.preload === 'auto' || (audioEl.duration && !isNaN(audioEl.duration))) {
+                continue;
+            }
+            activeMetadataCount++;
+            let isDone = false;
+            let timer = null;
+            const cleanup = () => {
+                if (isDone) {
+                    return;
+                }
+                isDone = true;
+                clearTimeout(timer);
+                audioEl.removeEventListener('loadedmetadata', cleanup);
+                audioEl.removeEventListener('error', cleanup);
+                activeMetadataCount--;
+                processMetadataQueue();
+            };
+            timer = setTimeout(cleanup, 8000);
+            audioEl.addEventListener('loadedmetadata', cleanup, { once: true });
+            audioEl.addEventListener('error', cleanup, { once: true });
+            audioEl.preload = 'metadata';
+            try {
+                audioEl.load();
+            } catch { }
+        }
+    }
+
+    /* 用户触发主动播放或交互时暂停后台队列让路 */
+    function notifyUserPlayback() {
+        isUserPlaying = true;
+        clearTimeout(userPlayTimer);
+        userPlayTimer = setTimeout(() => {
+            isUserPlaying = false;
+            processMetadataQueue();
+        }, 4000);
     }
 
     // 识别音频文件常见后缀特征
@@ -254,6 +301,8 @@
                 selectedAudios.clear();
                 knownAudioFormats.clear();
                 checkedAudioFormats.clear();
+                metadataQueue.length = 0;
+                activeMetadataCount = 0;
                 const audioGallery = shadow.getElementById('ag-gallery-audio');
                 if (audioGallery) {
                     audioGallery.innerHTML = '';
@@ -1734,6 +1783,12 @@
                 if (card) {
                     card.style.display = '';
                     card.classList.toggle('selected', selectedAudios.has(item.url));
+                    const audioPlayer = card.querySelector('audio');
+                    if (audioPlayer && (!audioPlayer.duration || isNaN(audioPlayer.duration)) && audioPlayer.preload !== 'metadata' && audioPlayer.preload !== 'auto') {
+                        if (!metadataQueue.includes(audioPlayer)) {
+                            metadataQueue.push(audioPlayer);
+                        }
+                    }
                 } else {
                     card = document.createElement('div');
                     card.dataset.url = item.url;
@@ -1758,7 +1813,7 @@
                         </div>
                         <div class="audio-right">
                             <div class="audio-player-wrapper">
-                                <audio controls preload="metadata" src="${item.url}"></audio>
+                                <audio controls preload="none" src="${item.url}"></audio>
                             </div>
                         </div>
                     `;
@@ -1776,12 +1831,21 @@
                         audioPlayer.addEventListener('click', (e) => {
                             e.stopPropagation();
                         });
+                        const handleActiveInteraction = () => {
+                            notifyUserPlayback();
+                            if (audioPlayer.preload !== 'auto') {
+                                audioPlayer.preload = 'auto';
+                            }
+                        };
+                        audioPlayer.addEventListener('pointerdown', handleActiveInteraction);
                         audioPlayer.addEventListener('play', () => {
+                            handleActiveInteraction();
                             if (currentPlayingAudio !== audioPlayer) {
                                 currentPlayingAudio?.pause();
                             }
                             currentPlayingAudio = audioPlayer;
                         });
+                        metadataQueue.push(audioPlayer);
                     }
                     card.addEventListener('click', () => {
                         const isSelected = selectedAudios.has(item.url);
@@ -1792,6 +1856,7 @@
                     audioGallery.appendChild(card);
                 }
             });
+            processMetadataQueue();
             // 隐藏未命中过滤条件的已有音频卡片
             existingCards.forEach((card, url) => {
                 if (!filteredUrlSet.has(url)) {
@@ -2256,6 +2321,7 @@
 
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         stopCurrentAudio();
+        metadataQueue.length = 0;
         isModalOpen = false;
         modal.classList.remove('active');
         document.body.style.overflow = savedBodyOverflow;

@@ -589,7 +589,13 @@
                     checkedImageFormats.add(info.format);
                 }
                 // 若无任何未识别格式图片则清理历史 OTHER 键
-                const hasOther = Array.from(imageStore.values()).some(item => !item.format);
+                let hasOther = false;
+                for (const item of imageStore.values()) {
+                    if (!item.format) {
+                        hasOther = true;
+                        break;
+                    }
+                }
                 if (!hasOther) {
                     knownImageFormats.delete('OTHER');
                     checkedImageFormats.delete('OTHER');
@@ -643,9 +649,9 @@
             const style = node.getAttribute('style') || '';
             const bgTitle = node.getAttribute('title') || node.getAttribute('aria-label') || '';
             const cleanName = sanitizeFileName(bgTitle);
-            const matches = style.matchAll(/url\(\s*(?:['"]([^'"]+)['"]|([^'")\s;]+))\s*\)/gi);
+            const matches = style.matchAll(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi);
             for (const m of matches) {
-                const rawUrl = (m[1] || m[2] || '').trim();
+                const rawUrl = (m[1] || '').trim();
                 if (rawUrl) {
                     registerImage(rawUrl, 'CSS-BG', { name: cleanName });
                 }
@@ -697,11 +703,7 @@
             (document.body || document.documentElement).appendChild(container);
         }
     }
-    if (document.documentElement) {
-        attachContainer();
-    } else {
-        document.addEventListener('DOMContentLoaded', attachContainer);
-    }
+    attachContainer();
     // 监听 SPA 路由切换导致容器被移除后自动重新挂载
     new MutationObserver(attachContainer).observe(document.documentElement, { childList: true, subtree: false });
 
@@ -1973,14 +1975,10 @@
             view.setUint16(4, 20, true);
             // 设置UTF-8编码标志位
             view.setUint16(6, 0x0800, true);
-            view.setUint16(8, 0, true);
-            view.setUint16(10, 0, true);
-            view.setUint16(12, 0, true);
             view.setUint32(14, crc, true);
             view.setUint32(18, size, true);
             view.setUint32(22, size, true);
             view.setUint16(26, nameBytes.length, true);
-            view.setUint16(28, 0, true);
             localHeader.set(nameBytes, 30);
             parts.push(localHeader);
             parts.push(dataBytes);
@@ -1990,18 +1988,10 @@
             cView.setUint16(4, 20, true);
             cView.setUint16(6, 20, true);
             cView.setUint16(8, 0x0800, true);
-            cView.setUint16(10, 0, true);
-            cView.setUint16(12, 0, true);
-            cView.setUint16(14, 0, true);
             cView.setUint32(16, crc, true);
             cView.setUint32(20, size, true);
             cView.setUint32(24, size, true);
             cView.setUint16(28, nameBytes.length, true);
-            cView.setUint16(30, 0, true);
-            cView.setUint16(32, 0, true);
-            cView.setUint16(34, 0, true);
-            cView.setUint16(36, 0, true);
-            cView.setUint32(38, 0, true);
             cView.setUint32(42, offset, true);
             centralEntry.set(nameBytes, 46);
             centralEntries.push(centralEntry);
@@ -2013,13 +2003,10 @@
         const endRecord = new Uint8Array(22);
         const endView = new DataView(endRecord.buffer);
         endView.setUint32(0, 101010256, true);
-        endView.setUint16(4, 0, true);
-        endView.setUint16(6, 0, true);
         endView.setUint16(8, files.length, true);
         endView.setUint16(10, files.length, true);
         endView.setUint32(12, centralDirSize, true);
         endView.setUint32(16, centralDirOffset, true);
-        endView.setUint16(20, 0, true);
         parts.push(endRecord);
         const totalLen = parts.reduce((acc, p) => acc + p.length, 0);
         const result = new Uint8Array(totalLen);
@@ -2147,15 +2134,28 @@
     let fabInitialTop = 0;
     let hasMoved = false;
 
+    /**
+     * 限制悬浮球在可视视口边界范围内的坐标
+     * 
+     * @param {number} x 目标横坐标数值
+     * @param {number} y 目标纵坐标数值
+     * @returns {{x: number, y: number}} 裁剪后的安全坐标对象
+     */
+    function clampFabPosition(x, y) {
+        const maxX = window.innerWidth - 64;
+        const maxY = window.innerHeight - 64;
+        return {
+            x: Math.max(10, Math.min(x, maxX)),
+            y: Math.max(10, Math.min(y, maxY))
+        };
+    }
+
     // 从持久化存储恢复悬浮球的历史位置
     const savedFabPos = (typeof GM_getValue === 'function') ? GM_getValue('ag_fab_pos', null) : null;
     if (savedFabPos?.x !== undefined && savedFabPos?.y !== undefined) {
-        const maxX = window.innerWidth - 64;
-        const maxY = window.innerHeight - 64;
-        const posX = Math.max(10, Math.min(savedFabPos.x, maxX));
-        const posY = Math.max(10, Math.min(savedFabPos.y, maxY));
-        fab.style.left = `${posX}px`;
-        fab.style.top = `${posY}px`;
+        const { x, y } = clampFabPosition(savedFabPos.x, savedFabPos.y);
+        fab.style.left = `${x}px`;
+        fab.style.top = `${y}px`;
         fab.style.right = 'auto';
         fab.style.bottom = 'auto';
     }
@@ -2174,12 +2174,9 @@
         if (Math.abs(dx) > 4 || Math.abs(dy) > 4) {
             hasMoved = true;
         }
-        const maxX = window.innerWidth - 64;
-        const maxY = window.innerHeight - 64;
-        const newLeft = Math.max(10, Math.min(fabInitialLeft + dx, maxX));
-        const newTop = Math.max(10, Math.min(fabInitialTop + dy, maxY));
-        fab.style.left = `${newLeft}px`;
-        fab.style.top = `${newTop}px`;
+        const { x, y } = clampFabPosition(fabInitialLeft + dx, fabInitialTop + dy);
+        fab.style.left = `${x}px`;
+        fab.style.top = `${y}px`;
         fab.style.right = 'auto';
         fab.style.bottom = 'auto';
     }

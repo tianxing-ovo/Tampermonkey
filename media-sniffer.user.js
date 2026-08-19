@@ -281,10 +281,9 @@
             const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
             const format = item.name.split('.').pop().toUpperCase();
             const finalUrl = item['raw_url'] || (item.sign ? `${directUrl}?sign=${item.sign}` : directUrl);
-            const pathVal = item.path || parentPath;
-            const segments = (typeof pathVal === 'string' ? decodeURIComponent(pathVal) : '').split('/').filter(Boolean);
-            const isFile = segments.length > 0 && segments[segments.length - 1].includes('.');
-            const authorName = isFile ? (segments.length >= 2 ? segments[segments.length - 2] : '') : (segments.length >= 1 ? segments[segments.length - 1] : '');
+            // 从parentPath提取作者名
+            const pathSegments = (typeof parentPath === 'string' ? decodeURIComponent(parentPath) : '').split('/').filter(Boolean);
+            const authorName = pathSegments.length >= 2 ? pathSegments[1] : '';
             registerAudio(finalUrl, source, {
                 name: item.name,
                 author: authorName,

@@ -319,20 +319,33 @@
         const list = Array.isArray(json.data.content)
             ? json.data.content
             : (json.data.name ? [json.data] : []);
-        const audioItems = list.filter(item => !item.is_dir && AUDIO_EXT_REGEX.test(item.name));
+        const audioItems = list.filter(item => !item.is_dir && (isGet ? item.raw_url : item.sign) && AUDIO_EXT_REGEX.test(item.name));
         if (audioItems.length === 0) {
             return;
         }
         const source = isSearch ? 'ALIST_SEARCH' : (isGet ? 'ALIST_GET' : 'ALIST_LIST');
         audioItems.forEach(item => {
-            const parentPath = item.parent || json.data.path || window.location.pathname || '';
-            const normalizedParent = parentPath === '/' ? '' : parentPath;
-            const fullPath = item.path || `${normalizedParent}/${item.name}`;
+            const rawParent = item.parent || json.data.path || window.location.pathname || '';
+            let decodedParent;
+            try {
+                decodedParent = decodeURIComponent(rawParent);
+            } catch {
+                decodedParent = rawParent;
+            }
+            const normalizedParent = decodedParent === '/' ? '' : decodedParent;
+            let fullPath = `${normalizedParent}/${item.name}`;
+            if (item.path) {
+                try {
+                    fullPath = decodeURIComponent(item.path);
+                } catch {
+                    fullPath = item.path;
+                }
+            }
             const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
             const format = item.name.split('.').pop().toUpperCase();
-            const finalUrl = item.raw_url || (item.sign ? `${directUrl}?sign=${item.sign}` : directUrl);
-            // 从parentPath提取作者名
-            const pathSegments = (typeof parentPath === 'string' ? decodeURIComponent(parentPath) : '').split('/').filter(Boolean);
+            const finalUrl = isGet ? item.raw_url : `${directUrl}?sign=${item.sign}`;
+            // 从decodedParent提取作者名
+            const pathSegments = (typeof decodedParent === 'string' ? decodedParent : '').split('/').filter(Boolean);
             const authorName = pathSegments.length >= 2 ? pathSegments[1] : '';
             registerAudio(finalUrl, source, {
                 name: item.name,

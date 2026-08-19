@@ -29,6 +29,23 @@
     if (window.self !== window.top) {
         return;
     }
+
+    // 代理全局事件监听以免疫宿主页面焦点陷阱对嗅探器组件的劫持
+    const originalDocAddEventListener = Document.prototype.addEventListener;
+    Document.prototype.addEventListener = function (type, listener, options) {
+        if (['focusin', 'mousedown', 'touchstart', 'click', 'keydown'].includes(type)) {
+            const wrappedListener = function (e) {
+                const path = e.composedPath ? e.composedPath() : [];
+                if (path.some(node => node && (node.id === 'ag-media-modal' || node.id === 'ag-media-sniffer-root' || node === container))) {
+                    return;
+                }
+                return typeof listener === 'function' ? listener.apply(this, arguments) : listener?.handleEvent?.(e);
+            };
+            return originalDocAddEventListener.call(this, type, wrappedListener, options);
+        }
+        return originalDocAddEventListener.apply(this, arguments);
+    };
+
     // 存储所有已嗅探到的图片对象集合
     const imageStore = new Map();
     // 存储所有已嗅探到的音频对象集合
@@ -1239,7 +1256,7 @@
             </div>
             <span class="search-wrap" id="ag-search-wrap" style="display:none">
                 <svg class="search-icon" viewBox="0 0 24 24"><path d="M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z"/></svg>
-                <input type="text" id="ag-search-input" class="search-input">
+                <input type="text" id="ag-search-input" class="search-input" placeholder="搜索音频名称或作者">
                 <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg></span>
             </span>
         </div>
@@ -2310,6 +2327,10 @@
     if (searchInput) {
         const searchWrap = shadow.getElementById('ag-search-wrap');
         const searchClear = shadow.getElementById('ag-search-clear');
+        // 阻止输入框按键冒泡防止触发宿主网页的全局快捷键
+        searchInput.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+        });
         searchInput.addEventListener('input', () => {
             audioSearchKeyword = searchInput.value.trim().toLowerCase();
             searchWrap.classList.toggle('has-value', searchInput.value.length > 0);

@@ -651,10 +651,7 @@
             const cleanName = sanitizeFileName(bgTitle);
             const matches = style.matchAll(/url\(\s*['"]?([^'")\s]+)['"]?\s*\)/gi);
             for (const m of matches) {
-                const rawUrl = (m[1] || '').trim();
-                if (rawUrl) {
-                    registerImage(rawUrl, 'CSS-BG', { name: cleanName });
-                }
+                registerImage(m[1].trim(), 'CSS-BG', { name: cleanName });
             }
         });
         // 扫描并导出画布内容
@@ -1495,7 +1492,12 @@
             container.innerHTML = `<span class="format-count">${emptyText}</span>`;
             return;
         }
-        const checkedCount = Array.from(formatCounts.keys()).filter(fmt => checkedFormats.has(fmt)).length;
+        let checkedCount = 0;
+        formatCounts.forEach((_, fmt) => {
+            if (checkedFormats.has(fmt)) {
+                checkedCount++;
+            }
+        });
         const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
         const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
         let html = '';
@@ -1811,20 +1813,19 @@
      * 单个媒体文件原生下载
      * 
      * @param {string} url 目标文件网络链接
-     * @param {string} name 自定义保存文件名
-     * @param {string} ext 目标文件拓展名
+     * @param {string} fileName 自定义保存文件名
      * @param {string} fallbackUrl 请求失败时的回退网络链接
      * @param {string} prefix 任务序数标识前缀
      * @returns {Promise<boolean>} 下载是否成功完成
      */
-    async function downloadSingleItem(url, name = '', ext = '', fallbackUrl = '', prefix = '') {
+    async function downloadSingleItem(url, fileName = '', fallbackUrl = '', prefix = '') {
         if (isDownloadCancelled) {
             return false;
         }
-        const fileName = name || `media_${Date.now()}.${ext.toLowerCase()}`;
+        const targetName = fileName || `media_${Date.now()}`;
         const tag = prefix ? `${prefix} ` : '';
         if (url.startsWith('data:')) {
-            triggerAnchorDownload(url, fileName);
+            triggerAnchorDownload(url, targetName);
             return true;
         }
         try {
@@ -1836,7 +1837,7 @@
             if (isDownloadCancelled) {
                 return false;
             }
-            triggerAnchorDownload(URL.createObjectURL(blob), fileName);
+            triggerAnchorDownload(URL.createObjectURL(blob), targetName);
             showToast(`${tag}下载完成`, 2000);
             return true;
         } catch (e) {
@@ -1844,14 +1845,14 @@
                 return false;
             }
             if (fallbackUrl && fallbackUrl !== url) {
-                return await downloadSingleItem(fallbackUrl, name, ext, '', prefix);
+                return await downloadSingleItem(fallbackUrl, fileName, '', prefix);
             }
             if (e.message?.startsWith('HTTP ')) {
                 showToast(`${tag}下载失败：${e.message}`);
                 return false;
             }
             if (typeof GM_download === 'function') {
-                GM_download({ url, name: fileName, saveAs: false });
+                GM_download({ url, name: targetName, saveAs: false });
                 return true;
             }
             showToast(`${tag}下载失败：${e.message || '网络错误'}`);
@@ -1880,14 +1881,12 @@
             let success = false;
             if (isImg) {
                 const item = imageStore.get(url);
-                const ext = (item?.format || 'jpg').toLowerCase();
                 const fileName = getItemFileName(item, `image_${idx + 1}`, 'jpg');
-                success = await downloadSingleItem(item?.hdUrl || url, fileName, ext, url, prefix);
+                success = await downloadSingleItem(item?.hdUrl || url, fileName, url, prefix);
             } else {
                 const item = audioStore.get(url);
-                const ext = (item?.format || 'mp3').toLowerCase();
                 const fileName = getItemFileName(item, `audio_${idx + 1}`, 'mp3');
-                success = await downloadSingleItem(url, fileName, ext, '', prefix);
+                success = await downloadSingleItem(url, fileName, '', prefix);
             }
             if (isDownloadCancelled) {
                 break;
@@ -2283,8 +2282,7 @@
             showToast(`请先勾选需要复制的${isImg ? '图片' : '音频'}`);
             return;
         }
-        const list = Array.from(selectedSet);
-        copyToClipboard(list.join('\n'), `已复制 ${list.length} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
+        copyToClipboard([...selectedSet].join('\n'), `已复制 ${selectedSet.size} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);

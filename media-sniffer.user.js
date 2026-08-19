@@ -290,7 +290,7 @@
     // 拦截fetch请求以捕获网盘数据接口
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
-        const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url ? args[0].url : '');
+        const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
         const response = await originalFetch.apply(this, args);
         if (/\/api\/fs\/(list|search|get)/.test(reqUrl)) {
             response.clone().json().then(data => {
@@ -307,7 +307,7 @@
             this.addEventListener('load', () => {
                 try {
                     handleAListResponse(JSON.parse(this.responseText), url);
-                } catch (e) { }
+                } catch { }
             });
         }
         return originalXhrOpen.apply(this, arguments);
@@ -1471,12 +1471,7 @@
             container.innerHTML = `<span class="format-count">${emptyText}</span>`;
             return;
         }
-        let checkedCount = 0;
-        formatCounts.forEach((count, fmt) => {
-            if (checkedFormats.has(fmt)) {
-                checkedCount++;
-            }
-        });
+        const checkedCount = Array.from(formatCounts.keys()).filter(fmt => checkedFormats.has(fmt)).length;
         const isAllChecked = formatCounts.size > 0 && checkedCount === formatCounts.size;
         const isIndeterminate = checkedCount > 0 && checkedCount < formatCounts.size;
         let html = '';
@@ -1763,20 +1758,20 @@
                             e.stopPropagation();
                         });
                         audioPlayer.addEventListener('play', () => {
-                            if (currentPlayingAudio && currentPlayingAudio !== audioPlayer) {
-                                currentPlayingAudio.pause();
+                            if (currentPlayingAudio !== audioPlayer) {
+                                currentPlayingAudio?.pause();
                             }
                             currentPlayingAudio = audioPlayer;
                         });
                     }
                     card.addEventListener('click', () => {
-                        if (selectedAudios.has(item.url)) {
+                        const isSelected = selectedAudios.has(item.url);
+                        if (isSelected) {
                             selectedAudios.delete(item.url);
-                            card.classList.remove('selected');
                         } else {
                             selectedAudios.add(item.url);
-                            card.classList.add('selected');
                         }
+                        card.classList.toggle('selected', !isSelected);
                         updateModalHeaderCounters();
                     });
                     audioGallery.appendChild(card);

@@ -39,12 +39,12 @@
     const selectedAudios = new Set();
     // 存储已识别的图片格式集合
     const knownImageFormats = new Set();
-    // 存储当前激活的图片格式筛选集合
-    const activeImageFormatFilters = new Set();
+    // 存储当前已勾选的图片格式集合
+    const checkedImageFormats = new Set();
     // 存储已识别的音频格式集合
     const knownAudioFormats = new Set();
-    // 存储当前激活的音频格式筛选集合
-    const activeAudioFormatFilters = new Set();
+    // 存储当前已勾选的音频格式集合
+    const checkedAudioFormats = new Set();
     // 记录上一次处理的网盘目录路径
     let lastAListPath = '';
     let currentTab = 'IMAGE';
@@ -171,7 +171,7 @@
         const format = meta.format || '';
         if (format && !knownAudioFormats.has(format)) {
             knownAudioFormats.add(format);
-            activeAudioFormatFilters.add(format);
+            checkedAudioFormats.add(format);
         }
         const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
@@ -213,7 +213,7 @@
             audioStore.clear();
             selectedAudios.clear();
             knownAudioFormats.clear();
-            activeAudioFormatFilters.clear();
+            checkedAudioFormats.clear();
             updateFloatingBadge();
             if (isModalOpen) {
                 updateModalHeaderCounters();
@@ -352,33 +352,41 @@
     }
 
     /**
-     * 通过二进制魔数特征推导真实图片格式
+     * 从URL中检测图片格式
      * 
-     * @param {Uint8Array} bytes 图片二进制字节数组
-     * @returns {string} 推导出的图片格式名称
+     * @param {string} url 图片地址
+     * @returns {string} 图片格式
      */
-    function detectFormatFromBytes(bytes) {
+    function detectImageFormatFromUrl(url) {
+        const m = url.match(/(?:data:image\/|\.|\b(?:format|f)=)(jpe?g|png|webp|svg|gif|avif)/i);
+        return m ? m[1].toUpperCase().replace('JPEG', 'JPG') : '';
+    }
+
+    /**
+     * 从字节数组中检测图片格式
+     * 
+     * @param {Uint8Array} bytes 图片字节数组
+     * @returns {string} 图片格式
+     */
+    function detectImageFormatFromBytes(bytes) {
         if (!bytes || bytes.length < 12) {
             return '';
         }
-        if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4e && bytes[3] === 0x47) {
-            return 'PNG';
-        }
-        if (bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) {
+        if (bytes[0] === 0xff && bytes[1] === 0xd8) {
             return 'JPG';
         }
-        if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46 &&
-            bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+        const head = String.fromCharCode(...bytes.slice(0, 12));
+        if (head.startsWith('\x89PNG')) {
+            return 'PNG';
+        }
+        if (head.startsWith('RIFF') && head.includes('WEBP')) {
             return 'WEBP';
         }
-        if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+        if (head.startsWith('GIF')) {
             return 'GIF';
         }
-        if (bytes[0] === 0x3c) {
-            const head = String.fromCharCode(...bytes.slice(0, 100)).toLowerCase();
-            if (head.includes('<svg') || head.includes('<?xml')) {
-                return 'SVG';
-            }
+        if (bytes[0] === 0x3c && (head.includes('<svg') || head.includes('<?xml'))) {
+            return 'SVG';
         }
         return '';
     }
@@ -410,7 +418,7 @@
                                 h = (h * 0x01000193) >>> 0;
                             }
                             const hash = `bin_${bytes.length}_${h.toString(16)}`;
-                            const realFormat = detectFormatFromBytes(bytes);
+                            const realFormat = detectImageFormatFromBytes(bytes);
                             resolve({ hash: hash, format: realFormat });
                         } else {
                             resolve({ hash: '', format: '' });
@@ -422,17 +430,6 @@
                 resolve({ hash: '', format: '' });
             }
         });
-    }
-
-    /**
-     * 根据图片链接特征推断格式类型
-     * 
-     * @param {string} url 图片网络链接
-     * @returns {string} 推断出的图片格式大写名称
-     */
-    function detectImageFormat(url) {
-        const m = url.match(/data:image\/(svg|png|jpe?g|webp)|(?:\.|\b(?:format|f)=)(png|jpe?g|webp|svg|gif|avif)(?:[?&#]|$)/i);
-        return m ? (m[1] || m[2]).toUpperCase().replace('JPEG', 'JPG') : (url.startsWith('data:') ? 'DATA' : 'JPG');
     }
 
     /**
@@ -477,10 +474,12 @@
             }
             return;
         }
-        const format = detectImageFormat(url);
-        if (!knownImageFormats.has(format)) {
+        // 检测图片格式
+        const format = detectImageFormatFromUrl(url);
+        // 首次发现新格式时记录并勾选
+        if (format && !knownImageFormats.has(format)) {
             knownImageFormats.add(format);
-            activeImageFormatFilters.add(format);
+            checkedImageFormats.add(format);
         }
         const imgObj = {
             url: url,
@@ -525,13 +524,14 @@
             }
         };
         tempImg.src = url;
-        // 异步计算二进制指纹以实现去重与格式矫正
+        // 异步计算二进制指纹以实现去重与格式补充
         fetchBinaryFingerprint(url).then(info => {
-            if (info.format && info.format !== imgObj.format) {
+            // 若初始未识别出格式且魔数成功识别则补充格式
+            if (!imgObj.format && info.format) {
                 imgObj.format = info.format;
                 if (!knownImageFormats.has(info.format)) {
                     knownImageFormats.add(info.format);
-                    activeImageFormatFilters.add(info.format);
+                    checkedImageFormats.add(info.format);
                 }
                 if (isModalOpen && currentTab === 'IMAGE') {
                     updateCardFormatDisplay(imgObj);
@@ -1451,7 +1451,7 @@
             }
             let checkedCount = 0;
             formatCounts.forEach((count, fmt) => {
-                if (activeImageFormatFilters.has(fmt)) {
+                if (checkedImageFormats.has(fmt)) {
                     checkedCount++;
                 }
             });
@@ -1462,7 +1462,7 @@
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
             }
             formatCounts.forEach((count, fmt) => {
-                const isChecked = activeImageFormatFilters.has(fmt) ? 'checked' : '';
+                const isChecked = checkedImageFormats.has(fmt) ? 'checked' : '';
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
             });
             container.innerHTML = html;
@@ -1472,10 +1472,10 @@
                 allCheckbox.addEventListener('change', () => {
                     if (allCheckbox.checked) {
                         formatCounts.forEach((_, fmt) => {
-                            activeImageFormatFilters.add(fmt);
+                            checkedImageFormats.add(fmt);
                         });
                     } else {
-                        activeImageFormatFilters.clear();
+                        checkedImageFormats.clear();
                     }
                     renderGallery();
                 });
@@ -1483,9 +1483,9 @@
             container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
-                        activeImageFormatFilters.add(cb.value);
+                        checkedImageFormats.add(cb.value);
                     } else {
-                        activeImageFormatFilters.delete(cb.value);
+                        checkedImageFormats.delete(cb.value);
                     }
                     renderGallery();
                 });
@@ -1509,7 +1509,7 @@
             }
             let checkedCount = 0;
             formatCounts.forEach((count, fmt) => {
-                if (activeAudioFormatFilters.has(fmt)) {
+                if (checkedAudioFormats.has(fmt)) {
                     checkedCount++;
                 }
             });
@@ -1520,7 +1520,7 @@
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-all-checkbox" ${isAllChecked ? 'checked' : ''}> 全部</label>`;
             }
             formatCounts.forEach((count, fmt) => {
-                const isChecked = activeAudioFormatFilters.has(fmt) ? 'checked' : '';
+                const isChecked = checkedAudioFormats.has(fmt) ? 'checked' : '';
                 html += `<label class="filter-item"><input type="checkbox" class="filter-format-checkbox" value="${fmt}" ${isChecked}> ${fmt}<span class="format-count">（${count}）</span></label>`;
             });
             container.innerHTML = html;
@@ -1530,10 +1530,10 @@
                 allAudioCheckbox.addEventListener('change', () => {
                     if (allAudioCheckbox.checked) {
                         formatCounts.forEach((_, fmt) => {
-                            activeAudioFormatFilters.add(fmt);
+                            checkedAudioFormats.add(fmt);
                         });
                     } else {
-                        activeAudioFormatFilters.clear();
+                        checkedAudioFormats.clear();
                     }
                     renderGallery();
                 });
@@ -1541,9 +1541,9 @@
             container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
                 cb.addEventListener('change', () => {
                     if (cb.checked) {
-                        activeAudioFormatFilters.add(cb.value);
+                        checkedAudioFormats.add(cb.value);
                     } else {
-                        activeAudioFormatFilters.delete(cb.value);
+                        checkedAudioFormats.delete(cb.value);
                     }
                     renderGallery();
                 });
@@ -1561,7 +1561,7 @@
         const seenHashes = new Set();
         let dupCount = 0;
         imageStore.forEach(item => {
-            if (knownImageFormats.has(item.format) && !activeImageFormatFilters.has(item.format)) {
+            if (knownImageFormats.has(item.format) && !checkedImageFormats.has(item.format)) {
                 return;
             }
             if (enableDeduplication && item.hash) {
@@ -1585,7 +1585,7 @@
     function getFilteredAudios() {
         const result = [];
         audioStore.forEach(item => {
-            if (knownAudioFormats.has(item.format) && !activeAudioFormatFilters.has(item.format)) {
+            if (knownAudioFormats.has(item.format) && !checkedAudioFormats.has(item.format)) {
                 return;
             }
             if (audioSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {

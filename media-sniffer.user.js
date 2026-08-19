@@ -48,8 +48,10 @@
 
     // 存储所有已嗅探到的图片对象集合
     const imageStore = new Map();
-    // 存储所有已嗅探到的音频对象集合
+    // {key = 音频地址, value = 音频对象}
     const audioStore = new Map();
+    // key = 纯净音频地址
+    const cleanAudioUrls = new Set();
     // 存储选中的图片链接集合
     const selectedImages = new Set();
     // 存储选中的音频链接集合
@@ -170,9 +172,9 @@
     }
 
     /**
-     * 注册音频对象到全局存储集合
+     * 注册音频
      * 
-     * @param {string} rawUrl 音频网络链接
+     * @param {string} rawUrl 音频地址
      * @param {string} source 触发捕获的来源标识
      * @param {Object} meta 携带的附加元数据对象
      */
@@ -182,9 +184,11 @@
             return;
         }
         // 跳过相同音频
-        if (audioStore.has(url)) {
+        const cleanUrl = url.split('?')[0];
+        if (cleanAudioUrls.has(cleanUrl)) {
             return;
         }
+        cleanAudioUrls.add(cleanUrl);
         const format = meta.format || '';
         if (format && !knownAudioFormats.has(format)) {
             knownAudioFormats.add(format);
@@ -192,6 +196,7 @@
         }
         const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
+        // 音频对象
         const audioObj = {
             url: url,
             name: name,
@@ -232,6 +237,7 @@
                 : decodeURIComponent(window.location.pathname);
             if (lastAListPath !== '' && lastAListPath !== currentPath) {
                 audioStore.clear();
+                cleanAudioUrls.clear();
                 selectedAudios.clear();
                 knownAudioFormats.clear();
                 checkedAudioFormats.clear();

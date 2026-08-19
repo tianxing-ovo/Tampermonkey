@@ -1829,7 +1829,7 @@
             if (fallbackUrl && fallbackUrl !== url) {
                 return await downloadSingleItem(fallbackUrl, name, ext, '', prefix);
             }
-            if (e.message && e.message.startsWith('HTTP ')) {
+            if (e.message?.startsWith('HTTP ')) {
                 showToast(`${tag}下载失败：${e.message}`);
                 return false;
             }
@@ -2078,8 +2078,7 @@
                 break;
             }
             if (binary && binary.data) {
-                const rawBytes = new Uint8Array(binary.data);
-                filesToZip.push({ name: fileName, data: rawBytes });
+                filesToZip.push({ name: fileName, data: new Uint8Array(binary.data) });
                 successCount++;
             }
         }
@@ -2277,8 +2276,7 @@
             return;
         }
         const list = Array.from(selectedSet);
-        const text = list.join('\n');
-        copyToClipboard(text, `已复制 ${list.length} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
+        copyToClipboard(list.join('\n'), `已复制 ${list.length} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);

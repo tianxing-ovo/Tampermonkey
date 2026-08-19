@@ -1500,11 +1500,7 @@
         }
         container.querySelectorAll('.filter-format-checkbox').forEach(cb => {
             cb.addEventListener('change', () => {
-                if (cb.checked) {
-                    checkedFormats.add(cb.value);
-                } else {
-                    checkedFormats.delete(cb.value);
-                }
+                checkedFormats[cb.checked ? 'add' : 'delete'](cb.value);
                 renderGallery();
             });
         });
@@ -1679,11 +1675,7 @@
                     }
                     card.addEventListener('click', () => {
                         const isSelected = selectedImages.has(item.url);
-                        if (isSelected) {
-                            selectedImages.delete(item.url);
-                        } else {
-                            selectedImages.add(item.url);
-                        }
+                        selectedImages[isSelected ? 'delete' : 'add'](item.url);
                         card.classList.toggle('selected', !isSelected);
                         updateModalHeaderCounters();
                     });
@@ -1762,11 +1754,7 @@
                     }
                     card.addEventListener('click', () => {
                         const isSelected = selectedAudios.has(item.url);
-                        if (isSelected) {
-                            selectedAudios.delete(item.url);
-                        } else {
-                            selectedAudios.add(item.url);
-                        }
+                        selectedAudios[isSelected ? 'delete' : 'add'](item.url);
                         card.classList.toggle('selected', !isSelected);
                         updateModalHeaderCounters();
                     });

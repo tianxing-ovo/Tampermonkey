@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.2.1
+// @version      1.3.0
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
 // @match        *://*/*
 // @run-at       document-start
+// @require      https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
@@ -20,7 +21,7 @@
 // @downloadURL  https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer.user.js
 // ==/UserScript==
 
-/* global GM_download, GM_xmlhttpRequest, GM_setClipboard, GM_getValue, GM_setValue */
+/* global GM_download, GM_xmlhttpRequest, GM_setClipboard, GM_getValue, GM_setValue, Hls */
 
 (function () {
     'use strict';
@@ -50,12 +51,18 @@
     const imageStore = new Map();
     // {key = 音频地址, value = 音频对象}
     const audioStore = new Map();
+    // {key = 视频地址, value = 视频对象}
+    const videoStore = new Map();
     // key = 纯净音频地址
     const cleanAudioUrls = new Set();
+    // key = 纯净视频地址
+    const cleanVideoUrls = new Set();
     // 存储选中的图片链接集合
     const selectedImages = new Set();
     // 存储选中的音频链接集合
     const selectedAudios = new Set();
+    // 存储选中的视频链接集合
+    const selectedVideos = new Set();
     // 存储已识别的图片格式集合
     const knownImageFormats = new Set();
     // 存储当前已勾选的图片格式集合
@@ -64,14 +71,20 @@
     const knownAudioFormats = new Set();
     // 存储当前已勾选的音频格式集合
     const checkedAudioFormats = new Set();
+    // 存储已识别的视频格式集合
+    const knownVideoFormats = new Set();
+    // 存储当前已勾选的视频格式集合
+    const checkedVideoFormats = new Set();
     // 记录上一次处理的网盘目录路径
     let lastAListPath = '';
     let currentTab = 'IMAGE';
     let isModalOpen = false;
     let enableDeduplication = true;
     let audioSearchKeyword = '';
+    let videoSearchKeyword = '';
     let savedBodyOverflow = null;
     let currentPlayingAudio = null;
+    let currentPlayingVideo = null;
     let activeDownloadXhr = null;
     let isDownloadCancelled = false;
     // 存储等待探测元数据的音频元素队列
@@ -89,13 +102,30 @@
         CHECK: 'M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
         CLOSE: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
         SEARCH: 'M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z',
-        MUSIC: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z'
+        MUSIC: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
+        VIDEO: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'
     };
 
     /* 停止当前正在播放的音频实例 */
     function stopCurrentAudio() {
-        currentPlayingAudio?.pause();
-        currentPlayingAudio = null;
+        if (currentPlayingAudio) {
+            currentPlayingAudio.pause();
+            currentPlayingAudio = null;
+        }
+    }
+
+    /* 停止当前正在播放的视频实例 */
+    function stopCurrentVideo() {
+        if (currentPlayingVideo) {
+            currentPlayingVideo.pause();
+            currentPlayingVideo = null;
+        }
+    }
+
+    /* 停止所有正在播放的音视频实例 */
+    function stopAllMediaPlayback() {
+        stopCurrentAudio();
+        stopCurrentVideo();
     }
 
     /* 调度后台低并发音频元数据探测队列 */
@@ -141,6 +171,8 @@
 
     // 识别音频文件常见后缀特征
     const AUDIO_EXT_REGEX = /\.(mp3|m4a|aac|flac|wav|ogg|opus)$/i;
+    // 识别视频文件常见后缀特征
+    const VIDEO_EXT_REGEX = /\.(mp4|m3u8|webm|flv|mov|m4v|mkv|mpd)(\?.*)?$/i;
     // 识别图片文件常见后缀特征
     const IMAGE_EXT_REGEX = /\.(jpe?g|png|webp|gif|svg|avif|bmp)$/i;
     // 识别常见默认占位图与空白图特征
@@ -229,8 +261,14 @@
      * @returns {string} 规范化文件名
      */
     function getItemFileName(item, defaultName, defaultExt) {
-        const ext = (item?.format || defaultExt).toLowerCase();
-        const name = item?.name || defaultName;
+        let ext = (item?.format || defaultExt).toLowerCase();
+        if (ext === 'm3u8') {
+            ext = 'ts';
+        }
+        let name = item?.name || defaultName;
+        if (name.toLowerCase().endsWith('.m3u8')) {
+            name = name.substring(0, name.length - 5);
+        }
         return name.toLowerCase().endsWith(`.${ext}`) ? name : `${name}.${ext}`;
     }
 
@@ -276,6 +314,262 @@
         if (isModalOpen) {
             updateModalHeaderCounters();
             if (currentTab === 'AUDIO') {
+                renderGallery();
+            }
+        }
+    }
+
+    /**
+     * 跨域网络请求加载器以代理流媒体切片
+     */
+    class GMHlsLoader {
+        /**
+         * 初始化加载器配置对象
+         * 
+         * @param {Object} config 配置参数对象
+         */
+        constructor(config) {
+            this.config = config;
+            this.stats = {
+                trequest: 0,
+                tfirst: 0,
+                tload: 0,
+                loaded: 0,
+                total: 0,
+                retry: 0,
+                chunkCount: 0,
+                bwEstimate: 0,
+                loading: { start: 0, first: 0, end: 0 },
+                parsing: { start: 0, end: 0 },
+                buffering: { start: 0, first: 0, end: 0 }
+            };
+            this.req = null;
+        }
+
+        /* 销毁当前请求实例 */
+        destroy() {
+            this.abort();
+        }
+
+        /* 中断当前进行中的网络请求 */
+        abort() {
+            if (this.req) {
+                try {
+                    this.req.abort();
+                } catch { }
+                this.req = null;
+            }
+        }
+
+        /**
+         * 加载流媒体切片数据
+         * 
+         * @param {Object} context 请求上下文对象
+         * @param {Object} config 额外配置参数
+         * @param {{onSuccess: Function, onError: Function}} callbacks 回调函数映射对象
+         */
+        load(context, config, callbacks) {
+            const now = performance.now();
+            this.stats.trequest = now;
+            this.stats.loading.start = now;
+            const responseType = context.responseType === 'arraybuffer' ? 'arraybuffer' : (context.responseType || 'text');
+            let targetUrl = context.url;
+            try {
+                targetUrl = encodeURI(decodeURI(context.url));
+            } catch {
+                targetUrl = context.url;
+            }
+
+            if (typeof GM_xmlhttpRequest === 'function') {
+                this.req = GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: targetUrl,
+                    responseType,
+                    headers: {
+                        'Referer': window.location.href
+                    },
+                    cookie: document.cookie,
+                    onload: (res) => {
+                        this.req = null;
+                        const tEnd = performance.now();
+                        this.stats.tfirst = Math.max(this.stats.trequest, tEnd - 30);
+                        this.stats.tload = tEnd;
+                        this.stats.loading.first = this.stats.tfirst;
+                        this.stats.loading.end = tEnd;
+                        const rawData = res.response;
+                        const len = rawData?.byteLength || rawData?.length || 0;
+                        this.stats.loaded = len;
+                        this.stats.total = len;
+
+                        if (res.status >= 200 && res.status < 300) {
+                            callbacks.onSuccess({
+                                url: res.finalUrl || targetUrl,
+                                data: rawData
+                            }, this.stats, context, res);
+                        } else {
+                            console.error('[MediaSniffer] GM_xmlhttpRequest failed with status:', res.status, targetUrl);
+                            callbacks.onError({
+                                code: res.status,
+                                text: res.statusText
+                            }, context, res);
+                        }
+                    },
+                    onerror: (err) => {
+                        this.req = null;
+                        console.error('[MediaSniffer] GM_xmlhttpRequest network error:', err, targetUrl);
+                        callbacks.onError(err, context, null);
+                    }
+                });
+            } else {
+                fetch(targetUrl)
+                    .then(res => {
+                        if (!res.ok) {
+                            throw new Error(`HTTP ${res.status}`);
+                        }
+                        return responseType === 'arraybuffer' ? res.arrayBuffer() : res.text();
+                    })
+                    .then(data => {
+                        const tEnd = performance.now();
+                        this.stats.tfirst = Math.max(this.stats.trequest, tEnd - 30);
+                        this.stats.tload = tEnd;
+                        this.stats.loading.first = this.stats.tfirst;
+                        this.stats.loading.end = tEnd;
+                        const len = data?.byteLength || data?.length || 0;
+                        this.stats.loaded = len;
+                        this.stats.total = len;
+                        callbacks.onSuccess({
+                            url: targetUrl,
+                            data
+                        }, this.stats, context);
+                    })
+                    .catch(err => {
+                        console.error('[MediaSniffer] Fetch error:', err, targetUrl);
+                        callbacks.onError(err, context, null);
+                    });
+            }
+        }
+    }
+
+    let hlsLoadingPromise = null;
+
+    /**
+     * 动态获取或加载 Hls 流媒体播放引擎类
+     * 
+     * @returns {Promise<*>} 返回可用的 Hls 构造函数或空
+     */
+    function getHlsClass() {
+        const existingHls = (typeof window !== 'undefined' && typeof window['Hls'] === 'function')
+            ? window['Hls']
+            : (typeof globalThis !== 'undefined' && typeof globalThis['Hls'] === 'function' ? globalThis['Hls'] : null);
+        if (existingHls) {
+            return Promise.resolve(existingHls);
+        }
+        if (hlsLoadingPromise) {
+            return hlsLoadingPromise;
+        }
+        hlsLoadingPromise = new Promise((resolve) => {
+            if (typeof GM_xmlhttpRequest === 'function') {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js',
+                    onload: (res) => {
+                        try {
+                            const fn = new Function(`${res.responseText}\nreturn (typeof window !== 'undefined' && window['Hls'] ? window['Hls'] : (typeof globalThis !== 'undefined' && globalThis['Hls'] ? globalThis['Hls'] : null));`);
+                            const loadedHls = fn();
+                            if (loadedHls) {
+                                console.log('[MediaSniffer] Hls.js dynamically loaded and initialized');
+                                resolve(loadedHls);
+                                return;
+                            }
+                        } catch (e) {
+                            console.warn('[MediaSniffer] Eval Hls failed:', e);
+                        }
+                        injectHlsScriptTag(resolve);
+                    },
+                    onerror: () => {
+                        injectHlsScriptTag(resolve);
+                    }
+                });
+            } else {
+                injectHlsScriptTag(resolve);
+            }
+        });
+        return hlsLoadingPromise;
+    }
+
+    /**
+     * 注入脚本标签作为后备加载方案
+     * 
+     * @param {Function} resolve 期约兑现回调函数
+     */
+    function injectHlsScriptTag(resolve) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js';
+        script.onload = () => {
+            const h = (typeof window !== 'undefined' && typeof window['Hls'] === 'function')
+                ? window['Hls']
+                : (typeof globalThis !== 'undefined' && typeof globalThis['Hls'] === 'function' ? globalThis['Hls'] : null);
+            console.log('[MediaSniffer] Hls.js loaded via script tag');
+            resolve(h);
+        };
+        script.onerror = () => {
+            console.error('[MediaSniffer] Failed to load Hls.js via script tag');
+            resolve(null);
+        };
+        (document.head || document.documentElement).appendChild(script);
+    }
+
+    /**
+     * 从网络链接中检测视频格式
+     * 
+     * @param {string} url 目标网络链接
+     * @returns {string} 识别出的视频格式大写字符串
+     */
+    function detectVideoFormatFromUrl(url) {
+        const m = url.match(/(?:\.|\b(?:format|ext)=)(mp4|m3u8|webm|flv|mov|m4v|mkv|mpd)(?=[?#&]|$)/i);
+        return m ? m[1].toUpperCase() : '';
+    }
+
+    /**
+     * 注册视频
+     * 
+     * @param {string} rawUrl 视频地址
+     * @param {string} source 触发捕获的来源标识
+     * @param {Object} meta 携带的附加元数据对象
+     */
+    function registerVideo(rawUrl, source = 'NETWORK', meta = {}) {
+        const url = normalizeUrl(rawUrl);
+        if (!url || url.length < 5) {
+            return;
+        }
+        const cleanUrl = url.split('?')[0];
+        if (cleanVideoUrls.has(cleanUrl)) {
+            return;
+        }
+        cleanVideoUrls.add(cleanUrl);
+        const format = meta.format || detectVideoFormatFromUrl(url) || 'VIDEO';
+        const fmtKey = format || 'VIDEO';
+        if (!knownVideoFormats.has(fmtKey)) {
+            knownVideoFormats.add(fmtKey);
+            checkedVideoFormats.add(fmtKey);
+        }
+        const name = meta.name || `video_${videoStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
+        const author = meta.author || '';
+        const videoObj = {
+            url,
+            name,
+            author,
+            format,
+            source,
+            size: meta.size || 0,
+            duration: meta.duration || 0,
+            addedAt: Date.now()
+        };
+        videoStore.set(url, videoObj);
+        updateFloatingBadge();
+        if (isModalOpen) {
+            updateModalHeaderCounters();
+            if (currentTab === 'VIDEO') {
                 renderGallery();
             }
         }
@@ -336,6 +630,7 @@
                 isImagesManuallyCleared = false;
                 clearImageState();
                 clearAudioState();
+                clearVideoState();
                 if (isModalOpen) {
                     renderGallery();
                 } else {
@@ -356,9 +651,9 @@
             const cleanName = sanitizeFileName(item.name.replace(/\.[^.]+$/, ''));
             registerImage(finalUrl, source, { name: cleanName });
         });
-        // 提取网盘中的音频资源
-        const audioItems = list.filter(item => !item.is_dir && (isGet ? item['raw_url'] : item.sign) && AUDIO_EXT_REGEX.test(item.name));
-        audioItems.forEach(item => {
+        // 提取网盘中的音视频资源
+        const mediaItems = list.filter(item => !item.is_dir && (isGet ? item['raw_url'] : item.sign) && (AUDIO_EXT_REGEX.test(item.name) || VIDEO_EXT_REGEX.test(item.name) || item.type === 2));
+        mediaItems.forEach(item => {
             const finalUrl = buildAListDirectUrl(item, json, isGet);
             const format = item.name.split('.').pop().toUpperCase();
             const rawParent = item.parent || json.data?.path || window.location.pathname || '';
@@ -370,7 +665,9 @@
             }
             const pathSegments = (typeof decodedParent === 'string' ? decodedParent : '').split('/').filter(Boolean);
             const authorName = pathSegments.length >= 2 ? pathSegments[1] : '';
-            registerAudio(finalUrl, source, {
+            const isVideo = VIDEO_EXT_REGEX.test(item.name) || item.type === 2;
+            const registerFn = isVideo ? registerVideo : registerAudio;
+            registerFn(finalUrl, source, {
                 name: item.name,
                 author: authorName,
                 size: item.size || 0,
@@ -378,13 +675,18 @@
             });
         });
         setTimeout(scanPageImages, 300);
+        setTimeout(scanPageVideos, 300);
         setTimeout(scanPageImages, 800);
+        setTimeout(scanPageVideos, 800);
     }
 
-    // 拦截fetch请求以捕获网盘数据接口
+    // 拦截fetch请求以捕获网盘数据接口与视频流
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
         const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
+        if (typeof reqUrl === 'string' && VIDEO_EXT_REGEX.test(reqUrl)) {
+            registerVideo(reqUrl, 'FETCH');
+        }
         const response = await originalFetch.apply(this, args);
         if (/\/api\/fs\/(list|search|get)/.test(reqUrl)) {
             response.clone().json().then(data => {
@@ -394,15 +696,20 @@
         return response;
     };
 
-    // 拦截xhr请求以捕获网盘数据接口
+    // 拦截xhr请求以捕获网盘数据接口与视频流
     const originalXhrOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
-        if (typeof url === 'string' && /\/api\/fs\/(list|search|get)/.test(url)) {
-            this.addEventListener('load', () => {
-                try {
-                    handleAListResponse(JSON.parse(this.responseText), url);
-                } catch { }
-            });
+        if (typeof url === 'string') {
+            if (VIDEO_EXT_REGEX.test(url)) {
+                registerVideo(url, 'XHR');
+            }
+            if (/\/api\/fs\/(list|search|get)/.test(url)) {
+                this.addEventListener('load', () => {
+                    try {
+                        handleAListResponse(JSON.parse(this.responseText), url);
+                    } catch { }
+                });
+            }
         }
         return originalXhrOpen.apply(this, arguments);
     };
@@ -541,7 +848,13 @@
                         if (!res.ok) {
                             throw new Error(`HTTP ${res.status}`);
                         }
-                        return responseType === 'blob' ? res.blob() : res.arrayBuffer();
+                        if (responseType === 'blob') {
+                            return res.blob();
+                        }
+                        if (responseType === 'text') {
+                            return res.text();
+                        }
+                        return res.arrayBuffer();
                     })
                     .then(resolve)
                     .catch(reject);
@@ -760,12 +1073,32 @@
         updateFloatingBadge();
     }
 
+    /* 深度扫描当前文档中的所有视频元素 */
+    function scanPageVideos() {
+        const videoElements = document.querySelectorAll('video, video source');
+        videoElements.forEach(el => {
+            const titleText = el.getAttribute('title') || el.getAttribute('alt') || '';
+            const cleanName = sanitizeFileName(titleText);
+            const src = el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-url');
+            if (src && VIDEO_EXT_REGEX.test(src)) {
+                registerVideo(src, 'VIDEO-TAG', { name: cleanName });
+            }
+        });
+        updateFloatingBadge();
+    }
+
+    /* 扫描页面全部媒体元素 */
+    function scanAllPageMedia() {
+        scanPageImages();
+        scanPageVideos();
+    }
+
     /* 挂载动态观察器实时捕获异步渲染的新媒体元素 */
     function setupDynamicObserver() {
         let timer = null;
         const observer = new MutationObserver(() => {
             clearTimeout(timer);
-            timer = setTimeout(scanPageImages, 400);
+            timer = setTimeout(scanAllPageMedia, 400);
         });
         const startObserve = () => {
             if (document.body) {
@@ -779,7 +1112,7 @@
         }
         window.addEventListener('scroll', () => {
             clearTimeout(timer);
-            timer = setTimeout(scanPageImages, 500);
+            timer = setTimeout(scanAllPageMedia, 500);
         }, { passive: true });
     }
 
@@ -790,14 +1123,14 @@
             if (window.location.href !== lastUrl) {
                 lastUrl = window.location.href;
                 isImagesManuallyCleared = false;
-                scanPageImages();
+                scanAllPageMedia();
                 if (isModalOpen) {
                     renderGallery();
                 } else {
                     updateFloatingBadge();
                 }
-                setTimeout(scanPageImages, 400);
-                setTimeout(scanPageImages, 1000);
+                setTimeout(scanAllPageMedia, 400);
+                setTimeout(scanAllPageMedia, 1000);
             }
         };
         const rawPushState = history.pushState;
@@ -1347,6 +1680,62 @@
             border-radius: 6px;
             text-transform: uppercase;
         }
+        .video-format-badge {
+            background: #fef3c7;
+            color: #d97706;
+            border: 1px solid #fde68a;
+            font-size: 10px;
+            font-weight: 700;
+            padding: 2px 6px;
+            border-radius: 6px;
+            text-transform: uppercase;
+        }
+        .video-list {
+            display: flex;
+            flex-direction: column;
+            gap: 14px;
+            max-width: 1100px;
+            margin: 0 auto;
+        }
+        .video-card {
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 14px 18px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            transition: all 0.2s;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            cursor: pointer;
+        }
+        .video-card:hover {
+            border-color: rgba(79, 70, 229, 0.4);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+            transform: translateY(-1px);
+        }
+        .video-card.selected {
+            border-color: var(--primary);
+            background: #f8faff;
+            box-shadow: 0 0 0 2px var(--primary);
+        }
+        .video-player-wrapper {
+            width: 280px;
+            max-height: 160px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #000;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+        }
+        .video-player-wrapper video {
+            width: 100%;
+            max-height: 160px;
+            outline: none;
+        }
         .audio-author-name {
             color: #334155;
             font-weight: 500;
@@ -1432,6 +1821,7 @@
                 <div class="tab-switcher">
                     <button class="tab-btn active" id="ag-tab-img" data-tab="IMAGE">图片 (0)</button>
                     <button class="tab-btn" id="ag-tab-audio" data-tab="AUDIO">音频 (0)</button>
+                    <button class="tab-btn" id="ag-tab-video" data-tab="VIDEO">视频 (0)</button>
                 </div>
                 <span id="ag-selected-count" class="header-selected-count">(已选中 0 项)</span>
                 <span id="ag-dedup-stat" class="header-dedup-stat"></span>
@@ -1462,6 +1852,7 @@
         <div class="modal-body">
             <div class="gallery-grid" id="ag-gallery-image"></div>
             <div class="audio-list" id="ag-gallery-audio" style="display:none"></div>
+            <div class="video-list" id="ag-gallery-video" style="display:none"></div>
         </div>
     `;
     shadow.appendChild(modal);
@@ -1561,42 +1952,49 @@
         }
     }
 
-    /**
-     * 统一刷新悬浮球角标数量统计
-     * 
-     * @param {Array<Object>} [imgList] 预计算的图片列表
-     * @param {Array<Object>} [audioList] 预计算的音频列表
-     */
-    function updateFloatingBadge(imgList = null, audioList = null) {
+    /* 统一刷新悬浮球角标数量统计 */
+    function updateFloatingBadge() {
         const badge = shadow.getElementById('ag-badge');
         if (badge) {
-            const imgCount = imgList ? imgList.length : getFilteredImages().length;
-            const audioCount = audioList ? audioList.length : getFilteredAudios().length;
-            badge.textContent = String(imgCount + audioCount);
+            const imgCount = getFilteredImages().length;
+            const audioCount = getFilteredAudios().length;
+            const videoCount = getFilteredVideos().length;
+            const total = imgCount + audioCount + videoCount;
+            badge.textContent = total > 99 ? '99+' : String(total);
+            badge.style.display = total > 0 ? 'block' : 'none';
         }
     }
 
-    /**
-     * 刷新弹窗头部选项卡数量与选中计数
-     * 
-     * @param {Array<Object>} [imgList] 预计算的图片列表
-     * @param {Array<Object>} [audioList] 预计算的音频列表
-     */
-    function updateModalHeaderCounters(imgList = null, audioList = null) {
+    /* 刷新弹窗头部选项卡数量与选中计数 */
+    function updateModalHeaderCounters() {
         const tabImg = shadow.getElementById('ag-tab-img');
         const tabAudio = shadow.getElementById('ag-tab-audio');
+        const tabVideo = shadow.getElementById('ag-tab-video');
         const countSpan = shadow.getElementById('ag-selected-count');
         const toggleBtn = shadow.getElementById('ag-btn-toggle-select');
-        const images = imgList || getFilteredImages();
-        const audios = audioList || getFilteredAudios();
-        const isImg = currentTab === 'IMAGE';
-        const selectedSet = isImg ? selectedImages : selectedAudios;
-        const activeList = isImg ? images : audios;
+        const images = getFilteredImages();
+        const audios = getFilteredAudios();
+        const videos = getFilteredVideos();
+        let selectedSet;
+        let activeList;
+        if (currentTab === 'IMAGE') {
+            selectedSet = selectedImages;
+            activeList = images;
+        } else if (currentTab === 'AUDIO') {
+            selectedSet = selectedAudios;
+            activeList = audios;
+        } else {
+            selectedSet = selectedVideos;
+            activeList = videos;
+        }
         if (tabImg) {
             tabImg.textContent = `图片 (${images.length})`;
         }
         if (tabAudio) {
             tabAudio.textContent = `音频 (${audios.length})`;
+        }
+        if (tabVideo) {
+            tabVideo.textContent = `视频 (${videos.length})`;
         }
         if (countSpan) {
             countSpan.textContent = `(已选中 ${selectedSet.size} 项)`;
@@ -1667,16 +2065,23 @@
         const container = shadow.getElementById('ag-format-checkboxes');
         const dedupWrap = shadow.getElementById('ag-dedup-label-wrap');
         const searchWrap = shadow.getElementById('ag-search-wrap');
+        const searchInput = shadow.getElementById('ag-search-input');
         if (!container) {
             return;
         }
         const formatCounts = new Map();
         const isImg = currentTab === 'IMAGE';
+        const isAudio = currentTab === 'AUDIO';
         if (dedupWrap) {
             dedupWrap.style.display = isImg ? 'inline-flex' : 'none';
         }
         if (searchWrap) {
             searchWrap.style.display = isImg ? 'none' : 'inline-flex';
+            if (searchInput) {
+                searchInput.placeholder = isAudio ? '搜索音频名称或作者' : '搜索视频名称或作者';
+                searchInput.value = isAudio ? audioSearchKeyword : videoSearchKeyword;
+                searchWrap.classList.toggle('has-value', searchInput.value.length > 0);
+            }
         }
         if (isImg) {
             const seenHashes = new Set();
@@ -1691,12 +2096,18 @@
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
             renderFormatCheckboxGroup(container, formatCounts, checkedImageFormats);
-        } else {
+        } else if (isAudio) {
             audioStore.forEach(item => {
                 const fmt = item.format || 'AUDIO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
             renderFormatCheckboxGroup(container, formatCounts, checkedAudioFormats);
+        } else {
+            videoStore.forEach(item => {
+                const fmt = item.format || 'VIDEO';
+                formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
+            });
+            renderFormatCheckboxGroup(container, formatCounts, checkedVideoFormats);
         }
     }
 
@@ -1748,6 +2159,26 @@
     }
 
     /**
+     * 获取经过筛选过滤后的视频列表
+     * 
+     * @returns {Array<Object>} 过滤后的视频数据对象数组
+     */
+    function getFilteredVideos() {
+        const result = [];
+        videoStore.forEach(item => {
+            const fmt = item.format || 'VIDEO';
+            if (knownVideoFormats.has(fmt) && !checkedVideoFormats.has(fmt)) {
+                return;
+            }
+            if (videoSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(videoSearchKeyword)) {
+                return;
+            }
+            result.push(item);
+        });
+        return result;
+    }
+
+    /**
      * 更新去重统计信息文字显示
      * 
      * @param {number} dupCount 当前识别出的重复项目总数
@@ -1755,9 +2186,64 @@
     function updateDeduplicationStat(dupCount) {
         const el = shadow.getElementById('ag-dedup-stat');
         if (el) {
-            el.textContent = (currentTab === 'IMAGE' && enableDeduplication && dupCount > 0)
-                ? `(已智能去重 ${dupCount} 张)`
-                : '';
+            if (currentTab === 'IMAGE' && enableDeduplication && dupCount > 0) {
+                el.textContent = `(已智能去重 ${dupCount} 张)`;
+            } else {
+                el.textContent = '';
+            }
+        }
+    }
+
+    /**
+     * 为视频元素配置播放源或挂载流媒体引擎
+     * 
+     * @param {HTMLElement} card 卡片容器元素
+     * @param {HTMLVideoElement} videoEl 视频播放器元素
+     * @param {Object} item 媒体数据对象
+     */
+    function setupVideoPlayerSource(card, videoEl, item) {
+        const isM3U8 = (item.format === 'M3U8' || item.url.includes('.m3u8'));
+        if (isM3U8) {
+            getHlsClass().then((HlsClass) => {
+                if (HlsClass && HlsClass.isSupported()) {
+                    if (card['_hls']) {
+                        try {
+                            card['_hls'].destroy();
+                        } catch { }
+                    }
+                    const hlsInstance = new HlsClass({
+                        loader: GMHlsLoader,
+                        fLoader: GMHlsLoader,
+                        pLoader: GMHlsLoader,
+                        enableWorker: false,
+                        autoStartLoad: true
+                    });
+                    card['_hls'] = hlsInstance;
+                    hlsInstance.loadSource(item.url);
+                    hlsInstance.attachMedia(videoEl);
+                    hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (evt, data) => {
+                        console.log('[MediaSniffer] Manifest parsed successfully, levels:', data?.levels?.length);
+                    });
+                    hlsInstance.on(HlsClass.Events.ERROR, (evt, data) => {
+                        if (data.fatal) {
+                            console.error('[MediaSniffer] Fatal HLS error:', data.type, data.details, data);
+                            if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
+                                console.log('[MediaSniffer] Recovering media error');
+                                hlsInstance.recoverMediaError();
+                            } else if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
+                                console.log('[MediaSniffer] Recovering network error');
+                                hlsInstance.startLoad();
+                            } else {
+                                showToast(`流媒体加载失败：${data.details}`);
+                            }
+                        }
+                    });
+                } else {
+                    videoEl.src = item.url;
+                }
+            });
+        } else {
+            videoEl.src = item.url;
         }
     }
 
@@ -1766,12 +2252,14 @@
         renderFormatFilters();
         const imgGallery = shadow.getElementById('ag-gallery-image');
         const audioGallery = shadow.getElementById('ag-gallery-audio');
-        if (!imgGallery || !audioGallery) {
+        const videoGallery = shadow.getElementById('ag-gallery-video');
+        if (!imgGallery || !audioGallery || !videoGallery) {
             return;
         }
         if (currentTab === 'IMAGE') {
             imgGallery.style.display = 'grid';
             audioGallery.style.display = 'none';
+            videoGallery.style.display = 'none';
             const filtered = getFilteredImages();
             imgGallery.innerHTML = '';
             filtered.forEach(item => {
@@ -1827,23 +2315,22 @@
                     const isSelected = selectedImages.has(item.url);
                     selectedImages[isSelected ? 'delete' : 'add'](item.url);
                     card.classList.toggle('selected', !isSelected);
-                    updateModalHeaderCounters(filtered, null);
+                    updateModalHeaderCounters();
                 });
                 imgGallery.appendChild(card);
             });
-            updateModalHeaderCounters(filtered, null);
-            updateFloatingBadge(filtered, null);
-        } else {
+            updateModalHeaderCounters();
+            updateFloatingBadge();
+        } else if (currentTab === 'AUDIO') {
             imgGallery.style.display = 'none';
             audioGallery.style.display = 'flex';
+            videoGallery.style.display = 'none';
             const filtered = getFilteredAudios();
             const filteredUrlSet = new Set(filtered.map(item => item.url));
-            // 获取已存在的音频卡片映射
             const existingCards = new Map();
             audioGallery.querySelectorAll('.audio-card').forEach(card => {
                 existingCards.set(card.dataset.url, card);
             });
-            // 遍历过滤后的音频数据并进行增量复用与显隐控制
             filtered.forEach(item => {
                 let card = existingCards.get(item.url);
                 if (card) {
@@ -1883,7 +2370,6 @@
                             </div>
                         </div>
                     `;
-                    // 阻止文件名点击触发整行选择并复制到剪贴板
                     const audioNameEl = card.querySelector('.audio-name');
                     if (audioNameEl) {
                         audioNameEl.addEventListener('click', (e) => {
@@ -1891,7 +2377,6 @@
                             copyToClipboard(item.name, '已复制文件名');
                         });
                     }
-                    // 阻止播放器控件点击触发整行选择并监听互斥播放事件
                     const audioPlayer = card.querySelector('audio');
                     if (audioPlayer) {
                         audioPlayer.addEventListener('click', (e) => {
@@ -1907,7 +2392,7 @@
                         audioPlayer.addEventListener('play', () => {
                             handleActiveInteraction();
                             if (currentPlayingAudio !== audioPlayer) {
-                                currentPlayingAudio?.pause();
+                                stopAllMediaPlayback();
                             }
                             currentPlayingAudio = audioPlayer;
                         });
@@ -1917,21 +2402,309 @@
                         const isSelected = selectedAudios.has(item.url);
                         selectedAudios[isSelected ? 'delete' : 'add'](item.url);
                         card.classList.toggle('selected', !isSelected);
-                        updateModalHeaderCounters(null, filtered);
+                        updateModalHeaderCounters();
                     });
                     audioGallery.appendChild(card);
                 }
             });
             processMetadataQueue();
-            // 隐藏未命中过滤条件的已有音频卡片
             existingCards.forEach((card, url) => {
                 if (!filteredUrlSet.has(url)) {
                     card.style.display = 'none';
                 }
             });
-            updateModalHeaderCounters(null, filtered);
-            updateFloatingBadge(null, filtered);
+            updateModalHeaderCounters();
+            updateFloatingBadge();
+        } else {
+            imgGallery.style.display = 'none';
+            audioGallery.style.display = 'none';
+            videoGallery.style.display = 'flex';
+            const filtered = getFilteredVideos();
+            const filteredUrlSet = new Set(filtered.map(item => item.url));
+            const existingCards = new Map();
+            videoGallery.querySelectorAll('.video-card').forEach(card => {
+                existingCards.set(card.dataset.url, card);
+            });
+            filtered.forEach(item => {
+                let card = existingCards.get(item.url);
+                const isM3U8 = (item.format === 'M3U8' || item.url.includes('.m3u8'));
+                if (card) {
+                    card.style.display = '';
+                    card.classList.toggle('selected', selectedVideos.has(item.url));
+                    const videoEl = card.querySelector('video');
+                    if (isM3U8 && (!card['_hls'] || !videoEl?.src)) {
+                        setupVideoPlayerSource(card, videoEl, item);
+                    }
+                } else {
+                    card = document.createElement('div');
+                    card.dataset.url = item.url;
+                    card.className = 'video-card' + (selectedVideos.has(item.url) ? ' selected' : '');
+                    const sizeStr = formatBytes(item.size);
+                    card.innerHTML = `
+                        <div class="audio-left">
+                            <div class="select-checkbox-box">
+                                <svg class="select-check-svg" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
+                            </div>
+                            <div class="audio-icon-box" style="background: linear-gradient(135deg, #fef3c7, #fed7aa); color: #d97706;">
+                                <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.VIDEO}"/></svg>
+                            </div>
+                            <div class="audio-info">
+                                <div class="audio-name" title="点击复制文件名">${item.name}</div>
+                                <div class="audio-meta-row">
+                                    <span class="video-format-badge">${item.format}</span>
+                                    ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
+                                    ${sizeStr ? `<span>${sizeStr}</span>` : ''}
+                                </div>
+                            </div>
+                        </div>
+                        <div class="audio-right">
+                            <div class="video-player-wrapper">
+                                <video controls playsinline preload="metadata"></video>
+                            </div>
+                        </div>
+                    `;
+                    const videoNameEl = card.querySelector('.audio-name');
+                    if (videoNameEl) {
+                        videoNameEl.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            copyToClipboard(item.name, '已复制文件名');
+                        });
+                    }
+                    const wrapper = card.querySelector('.video-player-wrapper');
+                    if (wrapper) {
+                        wrapper.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                        });
+                        wrapper.addEventListener('pointerdown', (e) => {
+                            e.stopPropagation();
+                        });
+                    }
+                    const videoPlayer = card.querySelector('video');
+                    if (videoPlayer) {
+                        setupVideoPlayerSource(card, videoPlayer, item);
+                        videoPlayer.addEventListener('loadedmetadata', () => {
+                            console.log('[MediaSniffer] Video metadata loaded, duration:', videoPlayer.duration);
+                        });
+                        videoPlayer.addEventListener('error', () => {
+                            console.error('[MediaSniffer] Video element error:', videoPlayer.error?.code, videoPlayer.error?.message);
+                        });
+                        videoPlayer.addEventListener('play', () => {
+                            if (currentPlayingVideo !== videoPlayer) {
+                                stopAllMediaPlayback();
+                            }
+                            currentPlayingVideo = videoPlayer;
+                        });
+                    }
+                    card.addEventListener('click', () => {
+                        const isSelected = selectedVideos.has(item.url);
+                        selectedVideos[isSelected ? 'delete' : 'add'](item.url);
+                        card.classList.toggle('selected', !isSelected);
+                        updateModalHeaderCounters();
+                    });
+                    videoGallery.appendChild(card);
+                }
+            });
+            existingCards.forEach((card, url) => {
+                if (!filteredUrlSet.has(url)) {
+                    card.style.display = 'none';
+                }
+            });
+            updateModalHeaderCounters();
+            updateFloatingBadge();
         }
+    }
+
+    /**
+     * 使用原生WebCryptoAPI解密AES128切片二进制数据
+     * 
+     * @param {ArrayBuffer} encryptedBuffer 加密切片二进制流
+     * @param {ArrayBuffer} keyBuffer 16字节密钥数据
+     * @param {Uint8Array} iv 16字节初始向量
+     * @returns {Promise<ArrayBuffer>} 解密后的明文二进制数据
+     */
+    async function decryptAes128Chunk(encryptedBuffer, keyBuffer, iv) {
+        const cryptoKey = await window.crypto.subtle.importKey(
+            'raw',
+            keyBuffer,
+            { name: 'AES-CBC' },
+            false,
+            ['decrypt']
+        );
+        return await window.crypto.subtle.decrypt(
+            { name: 'AES-CBC', iv },
+            cryptoKey,
+            encryptedBuffer
+        );
+    }
+
+    /**
+     * 解析M3U8播放列表提取切片链接与加密密钥信息
+     * 
+     * @param {string} m3u8Text 播放列表文本内容
+     * @param {string} baseUrl 当前播放列表基础链接
+     * @param {string} prefix 任务序数标识前缀
+     * @returns {Promise<Array<{url: string, key: ArrayBuffer|null, iv: Uint8Array|null}>>} 解析出的切片描述对象数组
+     */
+    async function parseM3u8Playlist(m3u8Text, baseUrl, prefix = '') {
+        const lines = m3u8Text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+        const isMaster = lines.some(l => l.startsWith('#EXT-X-STREAM-INF'));
+        if (isMaster) {
+            let maxBandwidth = -1;
+            let targetSubUrl = '';
+            for (let i = 0; i < lines.length; i++) {
+                if (lines[i].startsWith('#EXT-X-STREAM-INF')) {
+                    const bwMatch = lines[i].match(/BANDWIDTH=(\d+)/i);
+                    const bw = bwMatch ? parseInt(bwMatch[1], 10) : 0;
+                    const nextLine = lines[i + 1];
+                    if (nextLine && !nextLine.startsWith('#') && bw >= maxBandwidth) {
+                        maxBandwidth = bw;
+                        targetSubUrl = new URL(nextLine, baseUrl).href;
+                    }
+                }
+            }
+            if (targetSubUrl) {
+                const subText = await gmRequest(targetSubUrl, { responseType: 'text', prefix });
+                return await parseM3u8Playlist(subText, targetSubUrl, prefix);
+            }
+        }
+
+        const chunks = [];
+        let currentKey = null;
+        let currentIv = null;
+        let mediaSequence = 0;
+        const keyCache = new Map();
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (line.startsWith('#EXT-X-MEDIA-SEQUENCE:')) {
+                mediaSequence = parseInt(line.split(':')[1], 10) || 0;
+            } else if (line.startsWith('#EXT-X-KEY:')) {
+                const methodMatch = line.match(/METHOD=([^,\s]+)/i);
+                const method = methodMatch ? methodMatch[1].toUpperCase() : 'NONE';
+                if (method === 'AES-128') {
+                    const uriMatch = line.match(/URI=["']([^"']+)["']/i);
+                    const ivMatch = line.match(/IV=(?:0x)?([a-fA-F0-9]+)/i);
+                    if (uriMatch) {
+                        const keyUrl = new URL(uriMatch[1], baseUrl).href;
+                        if (!keyCache.has(keyUrl)) {
+                            const keyBuffer = await gmRequest(keyUrl, { responseType: 'arraybuffer', prefix });
+                            keyCache.set(keyUrl, keyBuffer);
+                        }
+                        currentKey = keyCache.get(keyUrl);
+                    }
+                    if (ivMatch) {
+                        const hex = ivMatch[1].padStart(32, '0');
+                        const ivBytes = new Uint8Array(16);
+                        for (let b = 0; b < 16; b++) {
+                            ivBytes[b] = parseInt(hex.slice(b * 2, b * 2 + 2), 16);
+                        }
+                        currentIv = ivBytes;
+                    } else {
+                        currentIv = null;
+                    }
+                } else if (method === 'NONE') {
+                    currentKey = null;
+                    currentIv = null;
+                }
+            } else if (line.startsWith('#EXTINF:')) {
+                const nextLine = lines[i + 1];
+                if (nextLine && !nextLine.startsWith('#')) {
+                    const chunkUrl = new URL(nextLine, baseUrl).href;
+                    let chunkIv = currentIv;
+                    if (currentKey && !chunkIv) {
+                        const seq = mediaSequence + chunks.length;
+                        chunkIv = new Uint8Array(16);
+                        const view = new DataView(chunkIv.buffer);
+                        view.setUint32(12, seq, false);
+                    }
+                    chunks.push({
+                        url: chunkUrl,
+                        key: currentKey,
+                        iv: chunkIv
+                    });
+                }
+            }
+        }
+        return chunks;
+    }
+
+    /**
+     * 并发拉取M3U8流媒体全量切片并无损合并为连续二进制流
+     * 
+     * @param {string} m3u8Url M3U8播放列表网络地址
+     * @param {string} prefix 任务序数标识前缀
+     * @returns {Promise<Object>} 包含合并后二进制数据Uint8Array的期约
+     */
+    async function fetchM3u8StreamBinary(m3u8Url, prefix = '') {
+        const tag = prefix ? `${prefix} ` : '';
+        showToast(`${tag}正在解析流媒体索引`, 60000, cancelDownload);
+        const m3u8Text = await gmRequest(m3u8Url, { responseType: 'text', prefix });
+        if (isDownloadCancelled) {
+            throw new Error('Cancelled');
+        }
+        const chunks = await parseM3u8Playlist(m3u8Text, m3u8Url, prefix);
+        if (isDownloadCancelled) {
+            throw new Error('Cancelled');
+        }
+        const totalChunks = chunks.length;
+        if (totalChunks === 0) {
+            throw new Error('未解析到有效的音视频切片');
+        }
+
+        const chunkResults = new Array(totalChunks);
+        let currentIndex = 0;
+        let downloadedCount = 0;
+        let totalBytesDownloaded = 0;
+        const concurrency = Math.min(6, totalChunks);
+
+        /**
+         * 单个协程工作函数
+         * 
+         * @returns {Promise<void>} 协程执行期约
+         */
+        async function chunkWorker() {
+            while (currentIndex < totalChunks && !isDownloadCancelled) {
+                const idx = currentIndex;
+                currentIndex++;
+                const item = chunks[idx];
+                const rawBuffer = await gmRequest(item.url, { responseType: 'arraybuffer', prefix: '', trackProgress: false });
+                if (isDownloadCancelled) {
+                    return;
+                }
+                let finalBuffer = rawBuffer;
+                if (item.key) {
+                    finalBuffer = await decryptAes128Chunk(rawBuffer, item.key, item.iv);
+                }
+                chunkResults[idx] = new Uint8Array(finalBuffer);
+                downloadedCount++;
+                totalBytesDownloaded += finalBuffer.byteLength;
+                const percent = Math.round((downloadedCount / totalChunks) * 100);
+                const sizeStr = formatBytes(totalBytesDownloaded);
+                showToast(`${tag}正在下载切片 [${downloadedCount}/${totalChunks}] ${percent}% (${sizeStr})`, 60000, cancelDownload);
+            }
+        }
+
+        const workers = [];
+        for (let w = 0; w < concurrency; w++) {
+            workers.push(chunkWorker());
+        }
+        await Promise.all(workers);
+
+        if (isDownloadCancelled) {
+            throw new Error('Cancelled');
+        }
+
+        const totalLength = chunkResults.reduce((acc, c) => acc + (c ? c.length : 0), 0);
+        const mergedBytes = new Uint8Array(totalLength);
+        let offset = 0;
+        for (let i = 0; i < totalChunks; i++) {
+            const chunk = chunkResults[i];
+            if (chunk) {
+                mergedBytes.set(chunk, offset);
+                offset += chunk.length;
+            }
+        }
+        return { data: mergedBytes };
     }
 
     /**
@@ -1947,11 +2720,32 @@
         if (isDownloadCancelled) {
             return false;
         }
+        const isM3U8 = url.includes('.m3u8') || fileName.toLowerCase().endsWith('.m3u8') || fileName.toLowerCase().endsWith('.ts');
         const targetName = fileName || `media_${Date.now()}`;
         const tag = prefix ? `${prefix} ` : '';
         if (url.startsWith('data:')) {
             triggerAnchorDownload(url, targetName);
             return true;
+        }
+        if (isM3U8) {
+            try {
+                const videoBinary = await fetchM3u8StreamBinary(url, tag);
+                if (isDownloadCancelled) {
+                    return false;
+                }
+                const blob = new Blob([videoBinary.data], { type: 'video/mp2t' });
+                const finalName = targetName.toLowerCase().endsWith('.ts') ? targetName : `${targetName.replace(/\.m3u8$/i, '')}.ts`;
+                triggerAnchorDownload(URL.createObjectURL(blob), finalName);
+                showToast(`${tag}下载完成`, 2000);
+                return true;
+            } catch (e) {
+                if (isDownloadCancelled) {
+                    return false;
+                }
+                console.error('[MediaSniffer] M3U8 download error:', e);
+                showToast(`${tag}流媒体下载失败：${e.message || '网络错误'}`);
+                return false;
+            }
         }
         try {
             const blob = await gmRequest(url, {
@@ -1985,16 +2779,51 @@
         }
     }
 
+    /**
+     * 获取当前激活选项卡的媒体数据上下文配置
+     * 
+     * @returns {Object} 包含存储集选中集类型名默认后缀与目录前缀的上下文对象
+     */
+    function getCurrentTabMediaContext() {
+        if (currentTab === 'IMAGE') {
+            return {
+                store: imageStore,
+                selected: selectedImages,
+                typeName: '图片',
+                defaultExt: 'jpg',
+                prefix: 'image',
+                folder: 'images'
+            };
+        }
+        if (currentTab === 'AUDIO') {
+            return {
+                store: audioStore,
+                selected: selectedAudios,
+                typeName: '音频',
+                defaultExt: 'mp3',
+                prefix: 'audio',
+                folder: 'audios'
+            };
+        }
+        return {
+            store: videoStore,
+            selected: selectedVideos,
+            typeName: '视频',
+            defaultExt: 'mp4',
+            prefix: 'video',
+            folder: 'videos'
+        };
+    }
+
     /* 采用串行异步队列逐个下载选中的媒体文件 */
     async function downloadSelectedDirectly() {
-        const isImg = currentTab === 'IMAGE';
-        const selectedSet = isImg ? selectedImages : selectedAudios;
-        if (selectedSet.size === 0) {
-            showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
+        const ctx = getCurrentTabMediaContext();
+        if (ctx.selected.size === 0) {
+            showToast(`请先勾选需要下载的${ctx.typeName}`);
             return;
         }
         isDownloadCancelled = false;
-        const list = Array.from(selectedSet);
+        const list = Array.from(ctx.selected);
         showToast(`开始下载 (共 ${list.length} 个文件)`, 1500, cancelDownload);
         let successCount = 0;
         for (let idx = 0; idx < list.length; idx++) {
@@ -2003,16 +2832,11 @@
             }
             const url = list[idx];
             const prefix = list.length > 1 ? `[${idx + 1}/${list.length}]` : '';
-            let success = false;
-            if (isImg) {
-                const item = imageStore.get(url);
-                const fileName = getItemFileName(item, `image_${idx + 1}`, 'jpg');
-                success = await downloadSingleItem(item?.hdUrl || url, fileName, url, prefix);
-            } else {
-                const item = audioStore.get(url);
-                const fileName = getItemFileName(item, `audio_${idx + 1}`, 'mp3');
-                success = await downloadSingleItem(url, fileName, '', prefix);
-            }
+            const item = ctx.store.get(url);
+            const fileName = getItemFileName(item, `${ctx.prefix}_${idx + 1}`, ctx.defaultExt);
+            const downloadUrl = currentTab === 'IMAGE' ? (item?.hdUrl || url) : url;
+            const fallbackUrl = currentTab === 'IMAGE' ? url : '';
+            const success = await downloadSingleItem(downloadUrl, fileName, fallbackUrl, prefix);
             if (isDownloadCancelled) {
                 break;
             }
@@ -2039,6 +2863,9 @@
     async function fetchBinary(url, prefix = '') {
         if (isDownloadCancelled) {
             throw new Error('Cancelled');
+        }
+        if (url.includes('.m3u8')) {
+            return await fetchM3u8StreamBinary(url, prefix);
         }
         if (url.startsWith('data:')) {
             const res = await fetch(url);
@@ -2098,31 +2925,43 @@
             view.setUint32(0, 67324752, true);
             view.setUint16(4, 20, true);
             // 设置UTF-8编码标志位
-            view.setUint16(6, 0x0800, true);
+            view.setUint16(6, 2048, true);
+            view.setUint16(8, 0, true);
+            view.setUint16(10, 0, true);
+            view.setUint16(12, 0, true);
             view.setUint32(14, crc, true);
             view.setUint32(18, size, true);
             view.setUint32(22, size, true);
             view.setUint16(26, nameBytes.length, true);
+            view.setUint16(28, 0, true);
             localHeader.set(nameBytes, 30);
             parts.push(localHeader);
             parts.push(dataBytes);
-            const centralEntry = new Uint8Array(46 + nameBytes.length);
-            const cView = new DataView(centralEntry.buffer);
+            const centralHeader = new Uint8Array(46 + nameBytes.length);
+            const cView = new DataView(centralHeader.buffer);
             cView.setUint32(0, 33639248, true);
             cView.setUint16(4, 20, true);
             cView.setUint16(6, 20, true);
-            cView.setUint16(8, 0x0800, true);
+            cView.setUint16(8, 2048, true);
+            cView.setUint16(10, 0, true);
+            cView.setUint16(12, 0, true);
+            cView.setUint16(14, 0, true);
             cView.setUint32(16, crc, true);
             cView.setUint32(20, size, true);
             cView.setUint32(24, size, true);
             cView.setUint16(28, nameBytes.length, true);
+            cView.setUint16(30, 0, true);
+            cView.setUint16(32, 0, true);
+            cView.setUint16(34, 0, true);
+            cView.setUint16(36, 0, true);
+            cView.setUint32(38, 0, true);
             cView.setUint32(42, offset, true);
-            centralEntry.set(nameBytes, 46);
-            centralEntries.push(centralEntry);
+            centralHeader.set(nameBytes, 46);
+            centralEntries.push(centralHeader);
             offset += localHeader.length + dataBytes.length;
         }
         const centralDirOffset = offset;
-        const centralDirSize = centralEntries.reduce((acc, entry) => acc + entry.length, 0);
+        const centralDirSize = centralEntries.reduce((acc, c) => acc + c.length, 0);
         parts.push(...centralEntries);
         const endRecord = new Uint8Array(22);
         const endView = new DataView(endRecord.buffer);
@@ -2142,24 +2981,19 @@
         return result;
     }
 
-    /* 将选中的全部图片或音频打包为压缩包下载 */
+    /* 将选中的全部图片音频或视频打包为压缩包下载 */
     async function downloadSelectedAsZip() {
-        const isImg = currentTab === 'IMAGE';
-        const selectedSet = isImg ? selectedImages : selectedAudios;
-        if (selectedSet.size === 0) {
-            showToast(`请先勾选需要下载的${isImg ? '图片' : '音频'}`);
+        const ctx = getCurrentTabMediaContext();
+        if (ctx.selected.size === 0) {
+            showToast(`请先勾选需要下载的${ctx.typeName}`);
             return;
         }
         isDownloadCancelled = false;
-        const selectedList = Array.from(selectedSet);
+        const selectedList = Array.from(ctx.selected);
         const fileNames = selectedList.map((url, idx) => {
-            if (isImg) {
-                const item = imageStore.get(url);
-                const padIndex = String(idx + 1).padStart(3, '0');
-                return getItemFileName(item, `img_${padIndex}`, 'jpg');
-            }
-            const item = audioStore.get(url);
-            return getItemFileName(item, `audio_${idx + 1}`, 'mp3');
+            const item = ctx.store.get(url);
+            const padIndex = currentTab === 'IMAGE' ? String(idx + 1).padStart(3, '0') : String(idx + 1);
+            return getItemFileName(item, `${ctx.prefix}_${padIndex}`, ctx.defaultExt);
         });
         // 避免同名文件在压缩包内产生冲突
         const nameOccurrences = new Map();
@@ -2184,8 +3018,8 @@
             }
             const url = selectedList[idx];
             const prefix = selectedList.length > 1 ? `[${idx + 1}/${selectedList.length}]` : '';
-            const targetUrl = isImg ? (imageStore.get(url)?.hdUrl || url) : url;
-            const fileName = `${isImg ? 'images' : 'audios'}/${uniqueFileNames[idx]}`;
+            const targetUrl = currentTab === 'IMAGE' ? (imageStore.get(url)?.hdUrl || url) : url;
+            const fileName = `${ctx.folder}/${uniqueFileNames[idx]}`;
             let binary = null;
             try {
                 binary = await fetchBinary(targetUrl, prefix);
@@ -2214,7 +3048,7 @@
         showToast('正在生成压缩包...', 60000);
         const zipBytes = createZipArchive(filesToZip);
         const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
-        const zipFileName = `${isImg ? 'images' : 'audios'}_pack_${Date.now()}.zip`;
+        const zipFileName = `${ctx.folder}_pack_${Date.now()}.zip`;
         const blobUrl = URL.createObjectURL(zipBlob);
         if (typeof GM_download === 'function') {
             try {
@@ -2346,13 +3180,14 @@
         savedBodyOverflow = document.body.style.overflow;
         document.body.style.overflow = 'hidden';
         fab.style.display = 'none';
-        scanPageImages();
+        scanAllPageMedia();
         renderGallery();
     });
 
     // 选项卡切换事件
     const tabImgBtn = shadow.getElementById('ag-tab-img');
     const tabAudioBtn = shadow.getElementById('ag-tab-audio');
+    const tabVideoBtn = shadow.getElementById('ag-tab-video');
 
     /**
      * 切换当前激活的媒体选项卡
@@ -2363,9 +3198,7 @@
         if (currentTab === tab) {
             return;
         }
-        if (tab === 'IMAGE') {
-            stopCurrentAudio();
-        }
+        stopAllMediaPlayback();
         currentTab = tab;
         if (tabImgBtn) {
             tabImgBtn.classList.toggle('active', tab === 'IMAGE');
@@ -2373,14 +3206,18 @@
         if (tabAudioBtn) {
             tabAudioBtn.classList.toggle('active', tab === 'AUDIO');
         }
+        if (tabVideoBtn) {
+            tabVideoBtn.classList.toggle('active', tab === 'VIDEO');
+        }
         renderGallery();
     }
 
     tabImgBtn?.addEventListener('click', () => switchTab('IMAGE'));
     tabAudioBtn?.addEventListener('click', () => switchTab('AUDIO'));
+    tabVideoBtn?.addEventListener('click', () => switchTab('VIDEO'));
 
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
-        stopCurrentAudio();
+        stopAllMediaPlayback();
         metadataQueue.length = 0;
         isModalOpen = false;
         modal.classList.remove('active');
@@ -2416,9 +3253,30 @@
         }
     }
 
+    /* 清空当前视频状态与播放实例 */
+    function clearVideoState() {
+        stopCurrentVideo();
+        const videoGallery = shadow.getElementById('ag-gallery-video');
+        if (videoGallery) {
+            videoGallery.querySelectorAll('.video-card').forEach(card => {
+                if (card['_hls']) {
+                    try {
+                        card['_hls'].destroy();
+                    } catch { }
+                    card['_hls'] = null;
+                }
+            });
+            videoGallery.innerHTML = '';
+        }
+        videoStore.clear();
+        cleanVideoUrls.clear();
+        selectedVideos.clear();
+        knownVideoFormats.clear();
+        checkedVideoFormats.clear();
+    }
+
     shadow.getElementById('ag-btn-refresh')?.addEventListener('click', () => {
-        const isImg = currentTab === 'IMAGE';
-        if (isImg) {
+        if (currentTab === 'IMAGE') {
             isImagesManuallyCleared = false;
             clearImageState();
             scanPageImages();
@@ -2426,7 +3284,7 @@
             updateFloatingBadge();
             updateModalHeaderCounters();
             showToast('已重新扫描图片');
-        } else {
+        } else if (currentTab === 'AUDIO') {
             clearAudioState();
             if (lastAListRawData) {
                 handleAListResponse(lastAListRawData.json, lastAListRawData.reqUrl);
@@ -2437,18 +3295,32 @@
                 updateModalHeaderCounters();
                 showToast('暂无历史音频数据');
             }
+        } else {
+            clearVideoState();
+            scanPageVideos();
+            if (lastAListRawData) {
+                handleAListResponse(lastAListRawData.json, lastAListRawData.reqUrl);
+                showToast('已重新加载视频列表');
+            } else {
+                renderGallery();
+                updateFloatingBadge();
+                updateModalHeaderCounters();
+                showToast('已重新扫描视频');
+            }
         }
     });
 
     shadow.getElementById('ag-btn-clear')?.addEventListener('click', () => {
-        const isImg = currentTab === 'IMAGE';
-        if (isImg) {
+        if (currentTab === 'IMAGE') {
             isImagesManuallyCleared = true;
             clearImageState();
             showToast('已清空图片列表');
-        } else {
+        } else if (currentTab === 'AUDIO') {
             clearAudioState();
             showToast('已清空音频列表');
+        } else {
+            clearVideoState();
+            showToast('已清空视频列表');
         }
         renderGallery();
         updateFloatingBadge();
@@ -2456,26 +3328,31 @@
     });
 
     shadow.getElementById('ag-btn-toggle-select').addEventListener('click', () => {
-        const isImg = currentTab === 'IMAGE';
-        const filtered = isImg ? getFilteredImages() : getFilteredAudios();
-        const selectedSet = isImg ? selectedImages : selectedAudios;
+        const ctx = getCurrentTabMediaContext();
+        let filtered;
+        if (currentTab === 'IMAGE') {
+            filtered = getFilteredImages();
+        } else if (currentTab === 'AUDIO') {
+            filtered = getFilteredAudios();
+        } else {
+            filtered = getFilteredVideos();
+        }
         if (filtered.length === 0) {
             return;
         }
-        const isAllSelected = filtered.every(item => selectedSet.has(item.url));
+        const isAllSelected = filtered.every(item => ctx.selected.has(item.url));
         const action = isAllSelected ? 'delete' : 'add';
-        filtered.forEach(item => selectedSet[action](item.url));
+        filtered.forEach(item => ctx.selected[action](item.url));
         renderGallery();
     });
 
     shadow.getElementById('ag-btn-copy-links').addEventListener('click', () => {
-        const isImg = currentTab === 'IMAGE';
-        const selectedSet = isImg ? selectedImages : selectedAudios;
-        if (selectedSet.size === 0) {
-            showToast(`请先勾选需要复制的${isImg ? '图片' : '音频'}`);
+        const ctx = getCurrentTabMediaContext();
+        if (ctx.selected.size === 0) {
+            showToast(`请先勾选需要复制的${ctx.typeName}`);
             return;
         }
-        copyToClipboard([...selectedSet].join('\n'), `已复制 ${selectedSet.size} 条${isImg ? '图片' : '音频'}链接到剪贴板`);
+        copyToClipboard([...ctx.selected].join('\n'), `已复制 ${ctx.selected.size} 条${ctx.typeName}链接到剪贴板`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);
@@ -2498,14 +3375,23 @@
             e.stopPropagation();
         });
         searchInput.addEventListener('input', () => {
-            audioSearchKeyword = searchInput.value.trim().toLowerCase();
+            const val = searchInput.value.trim().toLowerCase();
+            if (currentTab === 'AUDIO') {
+                audioSearchKeyword = val;
+            } else {
+                videoSearchKeyword = val;
+            }
             searchWrap.classList.toggle('has-value', searchInput.value.length > 0);
             renderGallery();
         });
         if (searchClear) {
             searchClear.addEventListener('click', () => {
                 searchInput.value = '';
-                audioSearchKeyword = '';
+                if (currentTab === 'AUDIO') {
+                    audioSearchKeyword = '';
+                } else {
+                    videoSearchKeyword = '';
+                }
                 searchWrap.classList.remove('has-value');
                 renderGallery();
                 searchInput.focus();
@@ -2515,7 +3401,7 @@
 
     /* 初始启动扫描与动态监听 */
     function init() {
-        scanPageImages();
+        scanAllPageMedia();
         setupDynamicObserver();
         setupUrlChangeListener();
     }

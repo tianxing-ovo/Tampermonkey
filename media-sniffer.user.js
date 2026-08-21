@@ -4673,7 +4673,7 @@
     }
 
     /**
-     * 定位并平滑滚动到当前正在播放的媒体卡片
+     * 定位并瞬间直达当前正在播放的媒体卡片
      */
     function locateCurrentPlaying() {
         if (!currentPlayingCard || !currentPlayingType) {
@@ -4686,7 +4686,8 @@
         if (currentTab !== currentPlayingType) {
             switchTab(currentPlayingType);
         }
-        currentPlayingCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        currentPlayingCard.scrollIntoView({ behavior: 'instant', block: 'center' });
+        updateScrollNavState();
         currentPlayingCard.classList.remove('locate-pulse');
         void currentPlayingCard.offsetWidth;
         currentPlayingCard.classList.add('locate-pulse');

@@ -1778,6 +1778,54 @@
         .video-card.locate-pulse {
             animation: agCardPulse 1.2s ease-in-out;
         }
+        /* 右下角双向平滑滚动导航胶囊 */
+        .scroll-nav-capsule {
+            position: absolute;
+            bottom: 28px;
+            right: 24px;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            border-radius: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 3px;
+            box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+            z-index: 90;
+            transition: opacity 0.2s, transform 0.2s;
+        }
+        .btn-scroll-nav {
+            background: transparent;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.15s;
+            outline: none;
+            user-select: none;
+        }
+        .btn-scroll-nav:hover {
+            background: rgba(255, 255, 255, 0.18);
+            color: #ffffff;
+        }
+        .btn-scroll-nav svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .scroll-nav-divider {
+            width: 16px;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.12);
+            margin: 1px 0;
+        }
         @keyframes agCardPulse {
             0%, 100% {
                 box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.35);
@@ -2311,6 +2359,15 @@
                 <button type="button" class="btn-now-playing btn-now-playing-pause" id="ag-btn-pause-playing">暂停</button>
                 <button type="button" class="btn-now-playing-close" id="ag-btn-close-playing" title="关闭">✕</button>
             </div>
+        </div>
+        <div class="scroll-nav-capsule" id="ag-scroll-capsule" style="display:none">
+            <button type="button" class="btn-scroll-nav" id="ag-btn-scroll-top" title="回到顶部" style="display:none">
+                <svg viewBox="0 0 24 24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>
+            </button>
+            <div class="scroll-nav-divider" id="ag-scroll-nav-divider" style="display:none"></div>
+            <button type="button" class="btn-scroll-nav" id="ag-btn-scroll-bottom" title="直达底部" style="display:none">
+                <svg viewBox="0 0 24 24"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>
+            </button>
         </div>
     `;
     shadow.appendChild(modal);
@@ -3380,9 +3437,11 @@
                     }
                 }
             });
-            updateModalHeaderCounters();
-            updateFloatingBadge();
         }
+        updateModalHeaderCounters();
+        updateFloatingBadge();
+        setTimeout(updateScrollNavState, 60);
+        setTimeout(updateScrollNavState, 200);
     }
 
     /**
@@ -4053,6 +4112,8 @@
         fab.style.display = 'none';
         scanAllPageMedia();
         renderGallery();
+        setTimeout(updateScrollNavState, 80);
+        setTimeout(updateScrollNavState, 300);
     });
 
     // 选项卡切换事件
@@ -4658,6 +4719,9 @@
     const locatePlayingTitle = shadow.getElementById('ag-now-playing-title');
     const pausePlayingBtn = shadow.getElementById('ag-btn-pause-playing');
     const closePlayingBtn = shadow.getElementById('ag-btn-close-playing');
+    const scrollTopBtn = shadow.getElementById('ag-btn-scroll-top');
+    const scrollBottomBtn = shadow.getElementById('ag-btn-scroll-bottom');
+    const modalBody = shadow.querySelector('.modal-body');
 
     if (locatePlayingBtn) {
         locatePlayingBtn.addEventListener('click', locateCurrentPlaying);
@@ -4679,6 +4743,49 @@
                 showToast('按 L 键可重新定位播放');
             }
         });
+    }
+    /**
+     * 根据当前内容区的滚动位置动态更新上下导航按钮与分割线的显隐
+     */
+    function updateScrollNavState() {
+        const capsule = shadow.getElementById('ag-scroll-capsule');
+        const topBtn = shadow.getElementById('ag-btn-scroll-top');
+        const bottomBtn = shadow.getElementById('ag-btn-scroll-bottom');
+        const divider = shadow.getElementById('ag-scroll-nav-divider');
+        const modalBody = shadow.querySelector('.modal-body');
+        if (!capsule || !topBtn || !bottomBtn || !divider || !modalBody) {
+            return;
+        }
+        const { scrollTop, scrollHeight, clientHeight } = modalBody;
+        const maxScroll = scrollHeight - clientHeight;
+        if (maxScroll <= 20) {
+            capsule.style.display = 'none';
+            return;
+        }
+        const isAtTop = scrollTop <= 20;
+        const isAtBottom = scrollTop >= maxScroll - 20;
+
+        topBtn.style.display = isAtTop ? 'none' : 'flex';
+        bottomBtn.style.display = isAtBottom ? 'none' : 'flex';
+        divider.style.display = (!isAtTop && !isAtBottom) ? 'block' : 'none';
+        capsule.style.display = (isAtTop && isAtBottom) ? 'none' : 'flex';
+    }
+
+    if (scrollTopBtn && modalBody) {
+        scrollTopBtn.addEventListener('click', () => {
+            modalBody.scrollTop = 0;
+            updateScrollNavState();
+        });
+    }
+    if (scrollBottomBtn && modalBody) {
+        scrollBottomBtn.addEventListener('click', () => {
+            modalBody.scrollTop = modalBody.scrollHeight;
+            updateScrollNavState();
+        });
+    }
+    if (modalBody) {
+        modalBody.addEventListener('scroll', updateScrollNavState, { passive: true });
+        window.addEventListener('resize', updateScrollNavState, { passive: true });
     }
 
     document.addEventListener('keydown', (e) => {

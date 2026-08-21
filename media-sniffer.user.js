@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.3.0
+// @version      1.4.0
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -1542,6 +1542,111 @@
         }
         .search-clear:hover { fill: var(--text-main); }
         .search-wrap.has-value .search-clear { display: inline-flex; }
+        .filter-right-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .sort-control-group {
+            position: relative;
+            display: inline-flex;
+            align-items: stretch;
+            border: 1px solid #cbd5e1;
+            border-radius: 8px;
+            background: #fff;
+            height: 32px;
+            box-sizing: border-box;
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .sort-control-group:hover,
+        .sort-control-group.open {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.12);
+        }
+        .sort-select-btn {
+            border: none;
+            background: transparent;
+            padding: 0 12px;
+            font-size: 13px;
+            font-weight: 500;
+            color: var(--text-main);
+            outline: none;
+            cursor: pointer;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            user-select: none;
+            border-top-left-radius: 7px;
+            border-bottom-left-radius: 7px;
+            transition: background 0.15s, color 0.15s;
+            white-space: nowrap;
+            min-width: 52px;
+        }
+        .sort-select-btn:hover {
+            background: #f8fafc;
+            color: var(--primary);
+        }
+        .btn-sort-order {
+            border: none;
+            border-left: 1px solid #e2e8f0;
+            background: #f8fafc;
+            padding: 0 9px;
+            color: var(--text-muted);
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.15s, color 0.15s;
+            user-select: none;
+            height: 100%;
+            border-top-right-radius: 7px;
+            border-bottom-right-radius: 7px;
+        }
+        .btn-sort-order:hover {
+            background: #ede9fe;
+            color: var(--primary);
+        }
+        .sort-dropdown-menu {
+            position: absolute;
+            top: calc(100% + 4px);
+            left: 0;
+            min-width: 100%;
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            overflow: hidden;
+            padding: 4px;
+            display: flex;
+            flex-direction: column;
+            gap: 2px;
+        }
+        .sort-menu-item {
+            padding: 6px 10px;
+            font-size: 13px;
+            color: var(--text-main);
+            text-align: center;
+            justify-content: center;
+            display: flex;
+            align-items: center;
+            border-radius: 6px;
+            cursor: pointer;
+            user-select: none;
+            transition: background 0.15s, color 0.15s;
+            white-space: nowrap;
+        }
+        .sort-menu-item:hover {
+            background: #f1f5f9;
+            color: var(--primary);
+        }
+        .sort-menu-item.active {
+            background: #ede9fe;
+            color: var(--primary);
+            font-weight: 600;
+        }
         /* 媒体画廊主体 */
         .modal-body {
             flex: 1;
@@ -2035,11 +2140,22 @@
                 <div class="filter-format-container" id="ag-format-checkboxes"></div>
                 <label class="filter-item filter-dedup-label" id="ag-dedup-label-wrap"><input type="checkbox" id="ag-filter-dedup" class="filter-checkbox" checked> 智能去重</label>
             </div>
-            <span class="search-wrap" id="ag-search-wrap" style="display:none">
-                <svg class="search-icon" viewBox="0 0 24 24"><path d="${SVG_PATHS.SEARCH}"/></svg>
-                <input type="text" id="ag-search-input" class="search-input" placeholder="搜索音频名称或作者">
-                <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="${SVG_PATHS.CLOSE}"/></svg></span>
-            </span>
+            <div class="filter-right-controls">
+                <span class="search-wrap" id="ag-search-wrap" style="display:none">
+                    <svg class="search-icon" viewBox="0 0 24 24"><path d="${SVG_PATHS.SEARCH}"/></svg>
+                    <input type="text" id="ag-search-input" class="search-input" placeholder="搜索音频名称或作者">
+                    <span class="search-clear" id="ag-search-clear"><svg viewBox="0 0 24 24" style="width:14px;height:14px;fill:inherit"><path d="${SVG_PATHS.CLOSE}"/></svg></span>
+                </span>
+                <div class="sort-control-group" id="ag-sort-group">
+                    <button type="button" class="sort-select-btn" id="ag-sort-trigger">默认</button>
+                    <button type="button" class="btn-sort-order" id="ag-btn-sort-order"></button>
+                    <div class="sort-dropdown-menu" id="ag-sort-menu" style="display:none">
+                        <div class="sort-menu-item active" data-value="DEFAULT">默认</div>
+                        <div class="sort-menu-item" data-value="NAME">名称</div>
+                        <div class="sort-menu-item" data-value="SIZE">大小</div>
+                    </div>
+                </div>
+            </div>
         </div>
         <div class="modal-body">
             <div class="gallery-grid" id="ag-gallery-image"></div>
@@ -2519,6 +2635,55 @@
         }
     }
 
+    let currentSortField = 'DEFAULT';
+    let currentSortOrder = 'ASC';
+
+    /**
+     * 更新排序切换按钮的文案与显隐状态
+     */
+    function updateSortOrderButton() {
+        const orderBtn = shadow.getElementById('ag-btn-sort-order');
+        if (!orderBtn) {
+            return;
+        }
+        orderBtn.style.display = 'inline-flex';
+        if (currentSortOrder === 'ASC') {
+            orderBtn.innerHTML = '<svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>';
+        } else {
+            orderBtn.innerHTML = '<svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>';
+        }
+    }
+
+    /**
+     * 对过滤后的媒体列表执行指定的排序规则
+     * 
+     * @param {Array<Object>} list 待排序的媒体列表
+     * @returns {Array<Object>} 排序完成后的媒体列表
+     */
+    function applyMediaSort(list) {
+        if (!list || list.length <= 1) {
+            return list;
+        }
+        if (currentSortField === 'DEFAULT') {
+            return currentSortOrder === 'ASC' ? list : [...list].reverse();
+        }
+        const sorted = [...list];
+        if (currentSortField === 'NAME') {
+            if (currentSortOrder === 'ASC') {
+                sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+            } else {
+                sorted.sort((a, b) => (b.name || '').localeCompare(a.name || '', undefined, { numeric: true, sensitivity: 'base' }));
+            }
+        } else if (currentSortField === 'SIZE') {
+            if (currentSortOrder === 'DESC') {
+                sorted.sort((a, b) => (b.size || (b.width ? b.width * b.height : 0) || 0) - (a.size || (a.width ? a.width * a.height : 0) || 0));
+            } else {
+                sorted.sort((a, b) => (a.size || (a.width ? a.width * a.height : 0) || 0) - (b.size || (b.width ? b.width * b.height : 0) || 0));
+            }
+        }
+        return sorted;
+    }
+
     /**
      * 获取经过筛选过滤后的图片列表
      * 
@@ -2545,7 +2710,7 @@
         if (currentTab === 'IMAGE') {
             updateDeduplicationStat(dupCount);
         }
-        return result;
+        return applyMediaSort(result);
     }
 
     /**
@@ -2585,7 +2750,7 @@
         if (currentTab === 'AUDIO') {
             updateDeduplicationStat(dupCount);
         }
-        return result;
+        return applyMediaSort(result);
     }
 
     /**
@@ -2625,7 +2790,7 @@
         if (currentTab === 'VIDEO') {
             updateDeduplicationStat(dupCount);
         }
-        return result;
+        return applyMediaSort(result);
     }
 
     /**
@@ -2912,8 +3077,8 @@
                         card.classList.toggle('selected', !isSelected);
                         updateModalHeaderCounters();
                     });
-                    audioGallery.appendChild(card);
                 }
+                audioGallery.appendChild(card);
             });
             processMetadataQueue();
             existingCards.forEach((card, url) => {
@@ -3018,11 +3183,11 @@
                         card.classList.toggle('selected', !isSelected);
                         updateModalHeaderCounters();
                     });
-                    videoGallery.appendChild(card);
                     if (videoObserver) {
                         videoObserver.observe(card);
                     }
                 }
+                videoGallery.appendChild(card);
             });
             existingCards.forEach((card, url) => {
                 if (!filteredUrlSet.has(url)) {
@@ -4152,6 +4317,59 @@
             });
         }
     }
+
+    const sortGroup = shadow.getElementById('ag-sort-group');
+    const sortTrigger = shadow.getElementById('ag-sort-trigger');
+    const sortMenu = shadow.getElementById('ag-sort-menu');
+    const sortOrderBtn = shadow.getElementById('ag-btn-sort-order');
+
+    if (sortGroup && sortTrigger && sortMenu) {
+        sortTrigger.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const isOpen = sortMenu.style.display !== 'none';
+            sortMenu.style.display = isOpen ? 'none' : 'flex';
+            sortGroup.classList.toggle('open', !isOpen);
+        });
+
+        sortMenu.querySelectorAll('.sort-menu-item').forEach(item => {
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const val = item.dataset.value;
+                currentSortField = val;
+                if (currentSortField === 'SIZE') {
+                    currentSortOrder = 'DESC';
+                } else {
+                    currentSortOrder = 'ASC';
+                }
+                sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
+                    el.classList.toggle('active', el.dataset.value === val);
+                });
+                sortTrigger.textContent = item.textContent;
+                sortMenu.style.display = 'none';
+                sortGroup.classList.remove('open');
+                updateSortOrderButton();
+                renderGallery();
+            });
+        });
+    }
+
+    shadow.addEventListener('click', () => {
+        if (sortMenu && sortMenu.style.display !== 'none') {
+            sortMenu.style.display = 'none';
+            if (sortGroup) {
+                sortGroup.classList.remove('open');
+            }
+        }
+    });
+
+    if (sortOrderBtn) {
+        sortOrderBtn.addEventListener('click', () => {
+            currentSortOrder = currentSortOrder === 'ASC' ? 'DESC' : 'ASC';
+            updateSortOrderButton();
+            renderGallery();
+        });
+    }
+    updateSortOrderButton();
 
     /* 初始启动扫描与动态监听 */
     function init() {

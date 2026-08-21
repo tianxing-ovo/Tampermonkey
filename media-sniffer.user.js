@@ -103,7 +103,11 @@
         CLOSE: 'M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z',
         SEARCH: 'M15.5 14h-.79l-.28-.27a6.5 6.5 0 1 0-.7.7l.27.28v.79l5 4.99L20.49 19l-4.99-5zm-6 0A4.5 4.5 0 1 1 14 9.5 4.5 4.5 0 0 1 9.5 14z',
         MUSIC: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
-        VIDEO: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z'
+        VIDEO: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z',
+        PREV: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z',
+        NEXT: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
+        FULLSCREEN: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
+        FULLSCREEN_EXIT: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'
     };
 
     /* 停止当前正在播放的音频实例 */
@@ -1659,16 +1663,22 @@
             position: absolute;
             top: 8px;
             left: 8px;
-            width: 22px;
-            height: 22px;
+            width: 24px;
+            height: 24px;
             border-radius: 6px;
-            background: rgba(255, 255, 255, 0.9);
+            background: rgba(255, 255, 255, 0.92);
             border: 1px solid #cbd5e1;
             display: flex;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+            z-index: 5;
+            transition: transform 0.15s ease, background 0.15s ease;
+        }
+        .img-select-overlay:hover {
+            transform: scale(1.12);
+            background: #ffffff;
         }
         .img-card.selected .img-select-overlay {
             background: var(--primary);
@@ -1796,7 +1806,7 @@
             border-radius: 10px;
             border: 1px solid rgba(255,255,255,0.1);
             box-shadow: 0 10px 30px rgba(0,0,0,0.25);
-            z-index: 2147483647;
+            z-index: 2147483648;
             display: none;
             align-items: center;
             gap: 12px;
@@ -1819,6 +1829,80 @@
             color: #ffffff;
         }
         @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        /* 全屏高清图片灯箱 */
+        .lightbox-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(3, 7, 18, 0.95);
+            backdrop-filter: blur(16px);
+            z-index: 2147483647;
+            display: none;
+            flex-direction: column;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+            user-select: none;
+            overflow: hidden;
+        }
+        .lightbox-overlay.active {
+            display: flex;
+            opacity: 1;
+        }
+        .lightbox-content {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: grab;
+            z-index: 10;
+        }
+        .lightbox-content.grabbing {
+            cursor: grabbing;
+        }
+        .lightbox-img {
+            width: 100vw;
+            height: 100vh;
+            max-width: 100vw;
+            max-height: 100vh;
+            object-fit: contain;
+            transition: transform 0.05s ease-out;
+            transform-origin: center center;
+            border-radius: 0;
+            box-shadow: none;
+        }
+        .lightbox-nav-btn {
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 52px;
+            height: 52px;
+            border-radius: 50%;
+            background: rgba(15, 23, 42, 0.5);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            color: #fff;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            transition: all 0.2s;
+        }
+        .lightbox-nav-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            transform: translateY(-50%) scale(1.1);
+        }
+        .lightbox-nav-btn svg {
+            width: 28px;
+            height: 28px;
+            fill: currentColor;
+        }
+        .lightbox-prev { left: 24px; }
+        .lightbox-next { right: 24px; }
     `;
     shadow.appendChild(styleEl);
 
@@ -1882,6 +1966,22 @@
     `;
     shadow.appendChild(modal);
 
+    const lightbox = document.createElement('div');
+    lightbox.className = 'lightbox-overlay';
+    lightbox.id = 'ag-lightbox';
+    lightbox.innerHTML = `
+        <button class="lightbox-nav-btn lightbox-prev" id="ag-lightbox-prev">
+            <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.PREV}"/></svg>
+        </button>
+        <button class="lightbox-nav-btn lightbox-next" id="ag-lightbox-next">
+            <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.NEXT}"/></svg>
+        </button>
+        <div class="lightbox-content" id="ag-lightbox-content">
+            <img class="lightbox-img" id="ag-lightbox-img" alt="preview" referrerpolicy="no-referrer">
+        </div>
+    `;
+    shadow.appendChild(lightbox);
+
     const toast = document.createElement('div');
     toast.className = 'toast-notify';
     const toastTextSpan = document.createElement('span');
@@ -1892,6 +1992,166 @@
     toast.appendChild(toastTextSpan);
     toast.appendChild(toastCancelBtn);
     shadow.appendChild(toast);
+
+    const lightboxImg = shadow.getElementById('ag-lightbox-img');
+    const lightboxContent = shadow.getElementById('ag-lightbox-content');
+    const lightboxPrev = shadow.getElementById('ag-lightbox-prev');
+    const lightboxNext = shadow.getElementById('ag-lightbox-next');
+
+    let currentLightboxIndex = 0;
+    let lightboxScale = 1;
+    let lightboxTranslateX = 0;
+    let lightboxTranslateY = 0;
+    let isLightboxDragging = false;
+    let lightboxStartX = 0;
+    let lightboxStartY = 0;
+
+    /* 更新大图缩放与平移变换样式 */
+    function updateLightboxTransform() {
+        if (lightboxImg) {
+            lightboxImg.style.transform = `translate(${lightboxTranslateX}px, ${lightboxTranslateY}px) scale(${lightboxScale})`;
+        }
+    }
+
+    /* 渲染当前灯箱大图及相关元数据 */
+    function renderLightboxCurrent() {
+        const list = getFilteredImages();
+        if (!list || list.length === 0 || currentLightboxIndex < 0 || currentLightboxIndex >= list.length) {
+            return;
+        }
+        const item = list[currentLightboxIndex];
+        lightboxScale = 1;
+        lightboxTranslateX = 0;
+        lightboxTranslateY = 0;
+        updateLightboxTransform();
+        if (lightboxImg) {
+            lightboxImg.src = item.url;
+        }
+    }
+
+    /**
+     * 打开全屏高清图片灯箱
+     * 
+     * @param {number} index 当前点击查看的图片索引
+     */
+    function openLightbox(index) {
+        const list = getFilteredImages();
+        if (!list || list.length === 0 || index < 0 || index >= list.length) {
+            return;
+        }
+        currentLightboxIndex = index;
+        lightbox.classList.add('active');
+        renderLightboxCurrent();
+        window.addEventListener('keydown', handleLightboxKeydown);
+    }
+
+    /* 关闭全屏高清图片灯箱 */
+    function closeLightbox() {
+        if (document.fullscreenElement) {
+            document.exitFullscreen?.().catch(() => { });
+        }
+        lightbox.classList.remove('active');
+        if (lightboxImg) {
+            lightboxImg.src = '';
+        }
+        window.removeEventListener('keydown', handleLightboxKeydown);
+    }
+
+    /* 显示上一张大图 */
+    function showLightboxPrev() {
+        const list = getFilteredImages();
+        if (!list.length) {
+            return;
+        }
+        currentLightboxIndex = (currentLightboxIndex - 1 + list.length) % list.length;
+        renderLightboxCurrent();
+    }
+
+    /* 显示下一张大图 */
+    function showLightboxNext() {
+        const list = getFilteredImages();
+        if (!list.length) {
+            return;
+        }
+        currentLightboxIndex = (currentLightboxIndex + 1) % list.length;
+        renderLightboxCurrent();
+    }
+
+    /**
+     * 处理灯箱全局快捷键事件
+     * 
+     * @param {KeyboardEvent} e 键盘事件对象
+     */
+    function handleLightboxKeydown(e) {
+        if (!lightbox.classList.contains('active')) {
+            return;
+        }
+        if (e.key === 'Escape') {
+            closeLightbox();
+        } else if (e.key === 'ArrowLeft') {
+            showLightboxPrev();
+        } else if (e.key === 'ArrowRight') {
+            showLightboxNext();
+        }
+    }
+
+    let hasMovedSignificantly = false;
+    let clickStartX = 0;
+    let clickStartY = 0;
+
+    lightboxPrev?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showLightboxPrev();
+    });
+    lightboxNext?.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showLightboxNext();
+    });
+    lightboxContent?.addEventListener('click', (e) => {
+        if (e.target === lightboxPrev || e.target === lightboxNext) {
+            return;
+        }
+        if (!hasMovedSignificantly) {
+            closeLightbox();
+        }
+    });
+    lightboxContent?.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.15 : -0.15;
+        lightboxScale = Math.min(Math.max(0.5, lightboxScale + delta), 6);
+        updateLightboxTransform();
+    }, { passive: false });
+    lightboxContent?.addEventListener('pointerdown', (e) => {
+        if (e.target === lightboxPrev || e.target === lightboxNext) {
+            return;
+        }
+        isLightboxDragging = true;
+        hasMovedSignificantly = false;
+        clickStartX = e.clientX;
+        clickStartY = e.clientY;
+        lightboxStartX = e.clientX - lightboxTranslateX;
+        lightboxStartY = e.clientY - lightboxTranslateY;
+        lightboxContent.classList.add('grabbing');
+    });
+    window.addEventListener('pointermove', (e) => {
+        if (!isLightboxDragging) {
+            return;
+        }
+        const dx = e.clientX - clickStartX;
+        const dy = e.clientY - clickStartY;
+        if (Math.abs(dx) > 6 || Math.abs(dy) > 6) {
+            hasMovedSignificantly = true;
+        }
+        lightboxTranslateX = e.clientX - lightboxStartX;
+        lightboxTranslateY = e.clientY - lightboxStartY;
+        updateLightboxTransform();
+    });
+    window.addEventListener('pointerup', () => {
+        if (isLightboxDragging) {
+            isLightboxDragging = false;
+            lightboxContent.classList.remove('grabbing');
+        }
+    });
 
     let toastTimer = null;
     let currentToastCancelCallback = null;
@@ -2416,6 +2676,7 @@
                 `;
                 const imgEl = card.querySelector('.img-thumb');
                 const dimSpan = card.querySelector('.img-dim');
+                const selectOverlay = card.querySelector('.img-select-overlay');
 
                 /* 缩略图加载完成计算尺寸并更新显示 */
                 function onThumbLoad() {
@@ -2446,11 +2707,19 @@
                     imgEl.addEventListener('load', onThumbLoad);
                     imgEl.addEventListener('error', onThumbError);
                 }
-                card.addEventListener('click', () => {
+                selectOverlay?.addEventListener('click', (e) => {
+                    e.stopPropagation();
                     const isSelected = selectedImages.has(item.url);
                     selectedImages[isSelected ? 'delete' : 'add'](item.url);
                     card.classList.toggle('selected', !isSelected);
                     updateModalHeaderCounters();
+                });
+                card.addEventListener('click', () => {
+                    const filteredList = getFilteredImages();
+                    const idx = filteredList.findIndex(i => i.url === item.url);
+                    if (idx !== -1) {
+                        openLightbox(idx);
+                    }
                 });
                 imgGallery.appendChild(card);
             });
@@ -3368,6 +3637,7 @@
 
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         stopAllMediaPlayback();
+        closeLightbox();
         metadataQueue.length = 0;
         if (videoObserver) {
             videoObserver.disconnect();
@@ -3381,6 +3651,7 @@
 
     /* 清空当前图片状态与缓存 */
     function clearImageState() {
+        closeLightbox();
         imageStore.clear();
         selectedImages.clear();
         knownImageFormats.clear();

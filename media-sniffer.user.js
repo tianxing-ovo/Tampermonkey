@@ -959,10 +959,20 @@
             knownImageFormats.add(fmtKey);
             checkedImageFormats.add(fmtKey);
         }
+        let autoName = meta.name || '';
+        if (!autoName && !url.startsWith('data:') && !url.startsWith('blob:')) {
+            try {
+                const pathname = new URL(url, window.location.href).pathname;
+                const lastPart = pathname.split('/').filter(Boolean).pop() || '';
+                if (lastPart) {
+                    autoName = decodeURIComponent(lastPart.replace(/\.[^.]+$/, ''));
+                }
+            } catch { }
+        }
         const imgObj = {
             url,
             hdUrl: upgradeToHdUrl(url),
-            name: meta.name || '',
+            name: autoName,
             format,
             source,
             width: 0,
@@ -1782,13 +1792,37 @@
         }
         /* 卡片底部信息条 */
         .img-meta {
-            padding: 10px 12px;
+            padding: 8px 12px 10px;
             display: flex;
+            flex-direction: column;
             align-items: center;
-            justify-content: space-between;
+            text-align: center;
+            gap: 4px;
             background: #ffffff;
             border-top: 1px solid #f1f5f9;
-            font-size: 12px;
+        }
+        .img-name {
+            width: 100%;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-main);
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            line-height: 1.4;
+            cursor: pointer;
+            text-align: center;
+            transition: color 0.15s ease;
+        }
+        .img-name:hover {
+            color: var(--primary);
+            text-decoration: underline;
+        }
+        .img-dim-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 11px;
         }
         .img-dim {
             color: var(--text-muted);
@@ -2657,10 +2691,11 @@
             videoGallery.style.display = 'none';
             const filtered = getFilteredImages();
             imgGallery.innerHTML = '';
-            filtered.forEach(item => {
+            filtered.forEach((item, index) => {
                 const card = document.createElement('div');
                 card.dataset.url = item.url;
                 card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
+                const displayName = item.name || `image_${index + 1}`;
                 const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
                 card.innerHTML = `
                     <div class="img-thumb-wrapper">
@@ -2671,7 +2706,10 @@
                         <span class="media-format-badge">${item.format}</span>
                     </div>
                     <div class="img-meta">
-                        <span class="img-dim">${dimText}</span>
+                        <div class="img-name" title="${displayName}">${displayName}</div>
+                        <div class="img-dim-row">
+                            <span class="img-dim">${dimText}</span>
+                        </div>
                     </div>
                 `;
                 const imgEl = card.querySelector('.img-thumb');
@@ -2714,6 +2752,13 @@
                     card.classList.toggle('selected', !isSelected);
                     updateModalHeaderCounters();
                 });
+                const nameEl = card.querySelector('.img-name');
+                if (nameEl) {
+                    nameEl.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        copyToClipboard(displayName, '已复制图片名称到剪贴板');
+                    });
+                }
                 card.addEventListener('click', () => {
                     const filteredList = getFilteredImages();
                     const idx = filteredList.findIndex(i => i.url === item.url);

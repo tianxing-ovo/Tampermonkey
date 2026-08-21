@@ -304,7 +304,7 @@
         }
         const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
-        if (name && !name.startsWith('audio_')) {
+        if (name && !name.startsWith('audio_') && !source.startsWith('ALIST')) {
             for (const exist of audioStore.values()) {
                 if (exist.name === name && exist.author === author) {
                     return;
@@ -324,7 +324,7 @@
         };
         audioStore.set(url, audioObj);
         updateFloatingBadge();
-        if (isModalOpen) {
+        if (isModalOpen && !isDeepCrawling) {
             updateModalHeaderCounters();
             if (currentTab === 'AUDIO') {
                 renderGallery();
@@ -571,7 +571,7 @@
         }
         const name = meta.name || `video_${videoStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
-        if (name && !name.startsWith('video_')) {
+        if (name && !name.startsWith('video_') && !source.startsWith('ALIST')) {
             for (const exist of videoStore.values()) {
                 if (exist.name === name && exist.author === author) {
                     return;
@@ -590,7 +590,7 @@
         };
         videoStore.set(url, videoObj);
         updateFloatingBadge();
-        if (isModalOpen) {
+        if (isModalOpen && !isDeepCrawling) {
             updateModalHeaderCounters();
             if (currentTab === 'VIDEO') {
                 renderGallery();
@@ -631,6 +631,26 @@
     }
 
     /**
+     * 从网盘目录路径中提取作者根路径
+     * 
+     * @param {string} pathStr 网盘目录路径字符串
+     * @returns {string} 提取到的作者根目录路径
+     */
+    function getAListAuthorBasePath(pathStr) {
+        if (!pathStr || pathStr === '/') {
+            return '';
+        }
+        const segments = pathStr.split('/').filter(Boolean);
+        if (segments.length === 0) {
+            return '';
+        }
+        if (segments.length === 1) {
+            return `/${segments[0]}`;
+        }
+        return `/${segments[0]}/${segments[1]}`;
+    }
+
+    /**
      * 处理AList响应
      * 
      * @param {Object} json 响应数据对象
@@ -644,12 +664,16 @@
         const isList = reqUrl.includes('/api/fs/list');
         const isSearch = reqUrl.includes('/api/fs/search');
         const isGet = reqUrl.includes('/api/fs/get');
-        // 目录列表切换时清空历史数据
+        // 目录列表切换时智能判断是否属于同一个作者
         if (isList) {
             const currentPath = json.data.path
                 ? decodeURIComponent(json.data.path)
                 : decodeURIComponent(window.location.pathname);
-            if (lastAListPath !== '' && lastAListPath !== currentPath) {
+            const currentAuthorBase = getAListAuthorBasePath(currentPath);
+            const prevAuthorBase = getAListAuthorBasePath(lastAListPath);
+
+            // 当切换到不同作者或离开作者目录回到分类根目录时才清空历史数据
+            if (lastAListPath !== '' && currentAuthorBase !== prevAuthorBase) {
                 isImagesManuallyCleared = false;
                 clearImageState();
                 clearAudioState();
@@ -668,14 +692,14 @@
             : (json.data.name ? [json.data] : []);
         const source = isSearch ? 'ALIST_SEARCH' : (isGet ? 'ALIST_GET' : 'ALIST_LIST');
         // 提取网盘中的图片资源
-        const imageItems = list.filter(item => !item.is_dir && (isGet ? item['raw_url'] : item.sign) && IMAGE_EXT_REGEX.test(item.name));
+        const imageItems = list.filter(item => !item['is_dir'] && (isGet ? item['raw_url'] : item.sign) && IMAGE_EXT_REGEX.test(item.name));
         imageItems.forEach(item => {
             const finalUrl = buildAListDirectUrl(item, json, isGet);
             const cleanName = sanitizeFileName(item.name.replace(/\.[^.]+$/, ''));
             registerImage(finalUrl, source, { name: cleanName });
         });
         // 提取网盘中的音视频资源
-        const mediaItems = list.filter(item => !item.is_dir && (isGet ? item['raw_url'] : item.sign) && (AUDIO_EXT_REGEX.test(item.name) || VIDEO_EXT_REGEX.test(item.name) || item.type === 2));
+        const mediaItems = list.filter(item => !item['is_dir'] && (isGet ? item['raw_url'] : item.sign) && (AUDIO_EXT_REGEX.test(item.name) || VIDEO_EXT_REGEX.test(item.name) || item.type === 2));
         mediaItems.forEach(item => {
             const finalUrl = buildAListDirectUrl(item, json, isGet);
             const format = item.name.split('.').pop().toUpperCase();
@@ -1411,6 +1435,26 @@
         .btn-download-selected:hover {
             background: #0369a1;
         }
+        .btn-deep-crawl {
+            background: linear-gradient(135deg, #6366f1, #8b5cf6);
+            color: #ffffff;
+            border: 1px solid transparent;
+            font-weight: 500;
+            display: none;
+            align-items: center;
+            gap: 4px;
+        }
+        .btn-deep-crawl:hover {
+            background: linear-gradient(135deg, #4f46e5, #7c3aed);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(99, 102, 241, 0.35);
+        }
+        .btn-deep-crawl.running {
+            background: #e0e7ff;
+            color: #4338ca;
+            border-color: #c7d2fe;
+            cursor: pointer;
+        }
         .btn-close {
             background: transparent;
             border: none;
@@ -1970,6 +2014,7 @@
                 <span id="ag-dedup-stat" class="header-dedup-stat"></span>
             </div>
             <div class="header-actions">
+                <button class="btn btn-deep-crawl" id="ag-btn-deep-crawl">深度抓取</button>
                 <button class="btn" id="ag-btn-refresh">重新扫描</button>
                 <button class="btn" id="ag-btn-clear">清空</button>
                 <button class="btn" id="ag-btn-toggle-select">全选</button>
@@ -2322,6 +2367,10 @@
             const isAll = activeList.length > 0 && activeList.every(i => selectedSet.has(i.url));
             toggleBtn.textContent = isAll ? '取消全选' : '全选';
         }
+        const deepCrawlBtn = shadow.getElementById('ag-btn-deep-crawl');
+        if (deepCrawlBtn) {
+            deepCrawlBtn.style.display = lastAListPath ? 'inline-flex' : 'none';
+        }
     }
 
     /**
@@ -2418,6 +2467,9 @@
         } else if (isAudio) {
             const seenKeys = new Set();
             audioStore.forEach(item => {
+                if (audioSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {
+                    return;
+                }
                 let decodedClean;
                 try {
                     decodedClean = decodeURIComponent(item.url.split('?')[0]);
@@ -2439,6 +2491,9 @@
         } else {
             const seenKeys = new Set();
             videoStore.forEach(item => {
+                if (videoSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(videoSearchKeyword)) {
+                    return;
+                }
                 let decodedClean;
                 try {
                     decodedClean = decodeURIComponent(item.url.split('?')[0]);
@@ -2696,7 +2751,7 @@
                 card.dataset.url = item.url;
                 card.className = 'img-card' + (selectedImages.has(item.url) ? ' selected' : '');
                 const displayName = item.name || `image_${index + 1}`;
-                const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中...';
+                const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中';
                 card.innerHTML = `
                     <div class="img-thumb-wrapper">
                         <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
@@ -3509,7 +3564,7 @@
             showToast('资源拉取失败无法打包');
             return;
         }
-        showToast('正在生成压缩包...', 60000);
+        showToast('正在生成压缩包', 60000);
         const zipBytes = createZipArchive(filesToZip);
         const zipBlob = new Blob([zipBytes], { type: 'application/zip' });
         const zipFileName = `${ctx.folder}_pack_${Date.now()}.zip`;
@@ -3748,6 +3803,227 @@
         knownVideoFormats.clear();
         checkedVideoFormats.clear();
     }
+
+    let isDeepCrawling = false;
+    let cancelDeepCrawl = false;
+    let activeDeepCrawlXhr = null;
+
+    /* 立即终止正在进行的深度抓取任务 */
+    function stopAListDeepCrawl() {
+        cancelDeepCrawl = true;
+        const deepCrawlBtn = shadow.getElementById('ag-btn-deep-crawl');
+        if (deepCrawlBtn) {
+            deepCrawlBtn.classList.remove('running');
+            deepCrawlBtn.textContent = '深度抓取';
+        }
+        if (activeDeepCrawlXhr) {
+            try {
+                activeDeepCrawlXhr.abort?.();
+            } catch { }
+            activeDeepCrawlXhr = null;
+        }
+    }
+
+    /**
+     * 递归扫描当前网盘作者目录下的所有子文件夹与媒体资源
+     */
+    async function startAListDeepCrawl() {
+        const deepCrawlBtn = shadow.getElementById('ag-btn-deep-crawl');
+        if (isDeepCrawling) {
+            stopAListDeepCrawl();
+            return;
+        }
+        const rawCurrentPath = lastAListPath || (lastAListRawData?.json?.data?.path ? decodeURIComponent(lastAListRawData.json.data.path) : '');
+        const rootPath = getAListAuthorBasePath(rawCurrentPath) || rawCurrentPath;
+        if (!rootPath) {
+            showToast('未检测到有效的网盘目录');
+            return;
+        }
+        isDeepCrawling = true;
+        cancelDeepCrawl = false;
+        if (deepCrawlBtn) {
+            deepCrawlBtn.classList.add('running');
+            deepCrawlBtn.textContent = '停止抓取';
+        }
+
+        const queue = [rootPath];
+        const visited = new Set();
+        let foundMediaCount = 0;
+        const authorName = rootPath.split('/').filter(Boolean).pop() || '';
+
+        showToast(`开始深度抓取作者【${authorName}】的全部作品：${rootPath}`, 60000);
+
+        try {
+            while (queue.length > 0 && !cancelDeepCrawl) {
+                const currentPath = queue.shift();
+                if (!currentPath || visited.has(currentPath)) {
+                    continue;
+                }
+                visited.add(currentPath);
+
+                if (!cancelDeepCrawl) {
+                    showToast(`深度抓取中 (已扫描 ${visited.size} 目录 / ${foundMediaCount} 作品)`, 60000);
+                }
+
+                let page = 1;
+                let totalItems = 0;
+                let loadedItems = 0;
+
+                do {
+                    if (cancelDeepCrawl) {
+                        break;
+                    }
+                    try {
+                        const payload = {
+                            path: currentPath,
+                            password: '',
+                            page,
+                            per_page: 0,
+                            refresh: false
+                        };
+                        const res = await new Promise((resolve, reject) => {
+                            if (cancelDeepCrawl) {
+                                reject(new Error('Cancelled'));
+                                return;
+                            }
+                            if (typeof GM_xmlhttpRequest === 'function') {
+                                activeDeepCrawlXhr = GM_xmlhttpRequest({
+                                    method: 'POST',
+                                    url: `${window.location.origin}/api/fs/list`,
+                                    headers: {
+                                        'Content-Type': 'application/json',
+                                        'Referer': window.location.href
+                                    },
+                                    timeout: 10000,
+                                    data: JSON.stringify(payload),
+                                    onload: (r) => {
+                                        activeDeepCrawlXhr = null;
+                                        try {
+                                            resolve(JSON.parse(r.responseText));
+                                        } catch (e) {
+                                            reject(e);
+                                        }
+                                    },
+                                    onerror: (err) => {
+                                        activeDeepCrawlXhr = null;
+                                        reject(err);
+                                    },
+                                    ['ontimeout']: () => {
+                                        activeDeepCrawlXhr = null;
+                                        reject(new Error('Timeout'));
+                                    },
+                                    ['onabort']: () => {
+                                        activeDeepCrawlXhr = null;
+                                        reject(new Error('Cancelled'));
+                                    }
+                                });
+                            } else {
+                                const controller = new AbortController();
+                                const timeoutId = setTimeout(() => {
+                                    controller.abort();
+                                }, 10000);
+                                fetch(`${window.location.origin}/api/fs/list`, {
+                                    method: 'POST',
+                                    headers: { 'Content-Type': 'application/json' },
+                                    body: JSON.stringify(payload),
+                                    signal: controller.signal
+                                })
+                                    .then(r => r.json())
+                                    .then((data) => {
+                                        clearTimeout(timeoutId);
+                                        resolve(data);
+                                    })
+                                    .catch((err) => {
+                                        clearTimeout(timeoutId);
+                                        reject(err);
+                                    });
+                            }
+                        });
+
+                        if (!res || res.code !== 200 || !res.data || cancelDeepCrawl) {
+                            break;
+                        }
+
+                        const rawContent = res.data.content;
+                        const list = Array.isArray(rawContent) ? rawContent : (res.data.name ? [res.data] : []);
+                        totalItems = res.data.total || list.length;
+                        loadedItems += list.length;
+
+                        for (const item of list) {
+                            if (cancelDeepCrawl) {
+                                break;
+                            }
+                            const itemFullPath = `${currentPath === '/' ? '' : currentPath}/${item.name}`;
+                            if (item['is_dir']) {
+                                if (!visited.has(itemFullPath) && !queue.includes(itemFullPath)) {
+                                    queue.push(itemFullPath);
+                                }
+                            } else {
+                                const finalUrl = `${window.location.origin}/d${encodeURI(itemFullPath)}?sign=${item.sign || ''}`;
+                                const pathSegments = currentPath.split('/').filter(Boolean);
+                                const authorName = pathSegments.length >= 2 ? pathSegments[1] : (pathSegments[0] || '');
+
+                                if (IMAGE_EXT_REGEX.test(item.name)) {
+                                    const cleanName = sanitizeFileName(item.name.replace(/\.[^.]+$/, ''));
+                                    registerImage(finalUrl, 'ALIST_DEEP', { name: cleanName });
+                                    foundMediaCount++;
+                                } else if (AUDIO_EXT_REGEX.test(item.name)) {
+                                    const format = item.name.split('.').pop().toUpperCase();
+                                    registerAudio(finalUrl, 'ALIST_DEEP', {
+                                        name: item.name,
+                                        author: authorName,
+                                        size: item.size || 0,
+                                        format
+                                    });
+                                    foundMediaCount++;
+                                } else if (VIDEO_EXT_REGEX.test(item.name) || item.type === 2) {
+                                    const format = item.name.split('.').pop().toUpperCase();
+                                    registerVideo(finalUrl, 'ALIST_DEEP', {
+                                        name: item.name,
+                                        author: authorName,
+                                        size: item.size || 0,
+                                        format
+                                    });
+                                    foundMediaCount++;
+                                }
+                            }
+                        }
+
+                        if (loadedItems < totalItems && list.length > 0 && !cancelDeepCrawl) {
+                            page++;
+                        } else {
+                            break;
+                        }
+                    } catch {
+                        break;
+                    }
+                } while (loadedItems < totalItems && !cancelDeepCrawl);
+
+                if (queue.length > 0 && !cancelDeepCrawl) {
+                    await new Promise(r => setTimeout(r, 40));
+                }
+            }
+        } finally {
+            const wasCancelled = cancelDeepCrawl;
+            isDeepCrawling = false;
+            cancelDeepCrawl = false;
+            activeDeepCrawlXhr = null;
+            if (deepCrawlBtn) {
+                deepCrawlBtn.classList.remove('running');
+                deepCrawlBtn.textContent = '深度抓取';
+            }
+            renderGallery();
+            updateFloatingBadge();
+            updateModalHeaderCounters();
+            if (wasCancelled) {
+                showToast(`已停止深度抓取 (已收录 ${foundMediaCount} 作品)`, 2500);
+            } else {
+                showToast(`深度抓取完成 (${visited.size} 目录 / ${foundMediaCount} 作品)`, 3500);
+            }
+        }
+    }
+
+    shadow.getElementById('ag-btn-deep-crawl')?.addEventListener('click', startAListDeepCrawl);
 
     shadow.getElementById('ag-btn-refresh')?.addEventListener('click', () => {
         if (currentTab === 'IMAGE') {

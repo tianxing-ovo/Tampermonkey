@@ -284,8 +284,10 @@
         if (!url || url.length < 5) {
             return;
         }
-        // 跳过相同音频
-        const cleanUrl = url.split('?')[0];
+        let cleanUrl = url.split('?')[0];
+        try {
+            cleanUrl = decodeURIComponent(cleanUrl);
+        } catch { }
         if (cleanAudioUrls.has(cleanUrl)) {
             return;
         }
@@ -298,6 +300,13 @@
         }
         const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
+        if (name && !name.startsWith('audio_')) {
+            for (const exist of audioStore.values()) {
+                if (exist.name === name && exist.author === author) {
+                    return;
+                }
+            }
+        }
         // 音频对象
         const audioObj = {
             url,
@@ -542,7 +551,10 @@
         if (!url || url.length < 5) {
             return;
         }
-        const cleanUrl = url.split('?')[0];
+        let cleanUrl = url.split('?')[0];
+        try {
+            cleanUrl = decodeURIComponent(cleanUrl);
+        } catch { }
         if (cleanVideoUrls.has(cleanUrl)) {
             return;
         }
@@ -555,6 +567,13 @@
         }
         const name = meta.name || `video_${videoStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
+        if (name && !name.startsWith('video_')) {
+            for (const exist of videoStore.values()) {
+                if (exist.name === name && exist.author === author) {
+                    return;
+                }
+            }
+        }
         const videoObj = {
             url,
             name,
@@ -1231,10 +1250,16 @@
             color: #fff;
             font-size: 11px;
             font-weight: 700;
-            padding: 2px 7px;
-            border-radius: 12px;
+            padding: 0 6px;
+            height: 18px;
+            min-width: 18px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 10px;
             border: 2px solid #fff;
-            min-width: 20px;
+            box-sizing: border-box;
+            line-height: 1;
             text-align: center;
             box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
             animation: badgePop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
@@ -1960,8 +1985,8 @@
             const audioCount = getFilteredAudios().length;
             const videoCount = getFilteredVideos().length;
             const total = imgCount + audioCount + videoCount;
-            badge.textContent = total > 99 ? '99+' : String(total);
-            badge.style.display = total > 0 ? 'block' : 'none';
+            badge.textContent = String(total);
+            badge.style.display = total > 0 ? 'inline-flex' : 'none';
         }
     }
 
@@ -2097,13 +2122,43 @@
             });
             renderFormatCheckboxGroup(container, formatCounts, checkedImageFormats);
         } else if (isAudio) {
+            const seenKeys = new Set();
             audioStore.forEach(item => {
+                let decodedClean;
+                try {
+                    decodedClean = decodeURIComponent(item.url.split('?')[0]);
+                } catch {
+                    decodedClean = item.url.split('?')[0];
+                }
+                const signature = (item.name && !item.name.startsWith('audio_'))
+                    ? `name_${item.name}__${item.author || ''}`.toLowerCase()
+                    : `url_${decodedClean}`;
+                if (seenKeys.has(signature) || seenKeys.has(decodedClean)) {
+                    return;
+                }
+                seenKeys.add(signature);
+                seenKeys.add(decodedClean);
                 const fmt = item.format || 'AUDIO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
             renderFormatCheckboxGroup(container, formatCounts, checkedAudioFormats);
         } else {
+            const seenKeys = new Set();
             videoStore.forEach(item => {
+                let decodedClean;
+                try {
+                    decodedClean = decodeURIComponent(item.url.split('?')[0]);
+                } catch {
+                    decodedClean = item.url.split('?')[0];
+                }
+                const signature = (item.name && !item.name.startsWith('video_'))
+                    ? `name_${item.name}__${item.author || ''}`.toLowerCase()
+                    : `url_${decodedClean}`;
+                if (seenKeys.has(signature) || seenKeys.has(decodedClean)) {
+                    return;
+                }
+                seenKeys.add(signature);
+                seenKeys.add(decodedClean);
                 const fmt = item.format || 'VIDEO';
                 formatCounts.set(fmt, (formatCounts.get(fmt) || 0) + 1);
             });
@@ -2134,7 +2189,9 @@
             }
             result.push(item);
         });
-        updateDeduplicationStat(dupCount);
+        if (currentTab === 'IMAGE') {
+            updateDeduplicationStat(dupCount);
+        }
         return result;
     }
 
@@ -2145,6 +2202,8 @@
      */
     function getFilteredAudios() {
         const result = [];
+        const seenKeys = new Set();
+        let dupCount = 0;
         audioStore.forEach(item => {
             const fmt = item.format || 'AUDIO';
             if (knownAudioFormats.has(fmt) && !checkedAudioFormats.has(fmt)) {
@@ -2153,8 +2212,26 @@
             if (audioSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(audioSearchKeyword)) {
                 return;
             }
+            let decodedClean;
+            try {
+                decodedClean = decodeURIComponent(item.url.split('?')[0]);
+            } catch {
+                decodedClean = item.url.split('?')[0];
+            }
+            const signature = (item.name && !item.name.startsWith('audio_'))
+                ? `name_${item.name}__${item.author || ''}`.toLowerCase()
+                : `url_${decodedClean}`;
+            if (seenKeys.has(signature) || seenKeys.has(decodedClean)) {
+                dupCount++;
+                return;
+            }
+            seenKeys.add(signature);
+            seenKeys.add(decodedClean);
             result.push(item);
         });
+        if (currentTab === 'AUDIO') {
+            updateDeduplicationStat(dupCount);
+        }
         return result;
     }
 
@@ -2165,6 +2242,8 @@
      */
     function getFilteredVideos() {
         const result = [];
+        const seenKeys = new Set();
+        let dupCount = 0;
         videoStore.forEach(item => {
             const fmt = item.format || 'VIDEO';
             if (knownVideoFormats.has(fmt) && !checkedVideoFormats.has(fmt)) {
@@ -2173,8 +2252,26 @@
             if (videoSearchKeyword && !`${item.name} ${item.author || ''} ${item.url}`.toLowerCase().includes(videoSearchKeyword)) {
                 return;
             }
+            let decodedClean;
+            try {
+                decodedClean = decodeURIComponent(item.url.split('?')[0]);
+            } catch {
+                decodedClean = item.url.split('?')[0];
+            }
+            const signature = (item.name && !item.name.startsWith('video_'))
+                ? `name_${item.name}__${item.author || ''}`.toLowerCase()
+                : `url_${decodedClean}`;
+            if (seenKeys.has(signature) || seenKeys.has(decodedClean)) {
+                dupCount++;
+                return;
+            }
+            seenKeys.add(signature);
+            seenKeys.add(decodedClean);
             result.push(item);
         });
+        if (currentTab === 'VIDEO') {
+            updateDeduplicationStat(dupCount);
+        }
         return result;
     }
 
@@ -2186,12 +2283,49 @@
     function updateDeduplicationStat(dupCount) {
         const el = shadow.getElementById('ag-dedup-stat');
         if (el) {
-            if (currentTab === 'IMAGE' && enableDeduplication && dupCount > 0) {
-                el.textContent = `(已智能去重 ${dupCount} 张)`;
+            if (dupCount > 0) {
+                const unit = currentTab === 'IMAGE' ? '张' : '个';
+                el.textContent = `(已智能去重 ${dupCount} ${unit})`;
             } else {
                 el.textContent = '';
             }
         }
+    }
+
+    let videoObserver = null;
+
+    /**
+     * 初始化视口观察器实现可见视频卡片按需挂载与首帧加载
+     * 
+     * @param {HTMLElement} rootContainer 滚动视口容器
+     */
+    function initVideoObserver(rootContainer) {
+        if (videoObserver) {
+            videoObserver.disconnect();
+        }
+        videoObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                const card = entry.target;
+                const videoPlayer = card.querySelector('video');
+                const url = card.dataset.url;
+                const item = videoStore.get(url);
+                if (entry.isIntersecting) {
+                    if (item && videoPlayer && !card['_hls']) {
+                        setupVideoPlayerSource(card, videoPlayer, item, true);
+                    }
+                } else {
+                    if (card['_hls'] && videoPlayer && videoPlayer.paused && currentPlayingVideo !== videoPlayer) {
+                        try {
+                            card['_hls']['destroy']();
+                        } catch { }
+                        card['_hls'] = null;
+                    }
+                }
+            });
+        }, {
+            root: rootContainer,
+            rootMargin: '250px 0px 250px 0px'
+        });
     }
 
     /**
@@ -2200,15 +2334,16 @@
      * @param {HTMLElement} card 卡片容器元素
      * @param {HTMLVideoElement} videoEl 视频播放器元素
      * @param {Object} item 媒体数据对象
+     * @param {boolean} autoStart 是否立即自动启动切片加载
      */
-    function setupVideoPlayerSource(card, videoEl, item) {
+    function setupVideoPlayerSource(card, videoEl, item, autoStart = true) {
         const isM3U8 = (item.format === 'M3U8' || item.url.includes('.m3u8'));
         if (isM3U8) {
             getHlsClass().then((HlsClass) => {
                 if (HlsClass && HlsClass.isSupported()) {
                     if (card['_hls']) {
                         try {
-                            card['_hls'].destroy();
+                            card['_hls']['destroy']();
                         } catch { }
                     }
                     const hlsInstance = new HlsClass({
@@ -2216,7 +2351,7 @@
                         fLoader: GMHlsLoader,
                         pLoader: GMHlsLoader,
                         enableWorker: false,
-                        autoStartLoad: true
+                        autoStartLoad: autoStart
                     });
                     card['_hls'] = hlsInstance;
                     hlsInstance.loadSource(item.url);
@@ -2419,6 +2554,10 @@
             imgGallery.style.display = 'none';
             audioGallery.style.display = 'none';
             videoGallery.style.display = 'flex';
+            const modalBody = shadow.querySelector('.modal-body');
+            if (modalBody) {
+                initVideoObserver(modalBody);
+            }
             const filtered = getFilteredVideos();
             const filteredUrlSet = new Set(filtered.map(item => item.url));
             const existingCards = new Map();
@@ -2427,13 +2566,11 @@
             });
             filtered.forEach(item => {
                 let card = existingCards.get(item.url);
-                const isM3U8 = (item.format === 'M3U8' || item.url.includes('.m3u8'));
                 if (card) {
                     card.style.display = '';
                     card.classList.toggle('selected', selectedVideos.has(item.url));
-                    const videoEl = card.querySelector('video');
-                    if (isM3U8 && (!card['_hls'] || !videoEl?.src)) {
-                        setupVideoPlayerSource(card, videoEl, item);
+                    if (videoObserver) {
+                        videoObserver.observe(card);
                     }
                 } else {
                     card = document.createElement('div');
@@ -2481,7 +2618,13 @@
                     }
                     const videoPlayer = card.querySelector('video');
                     if (videoPlayer) {
-                        setupVideoPlayerSource(card, videoPlayer, item);
+                        const handleActiveInteraction = () => {
+                            notifyUserPlayback();
+                            if (!card['_hls']) {
+                                setupVideoPlayerSource(card, videoPlayer, item, true);
+                            }
+                        };
+                        videoPlayer.addEventListener('pointerdown', handleActiveInteraction);
                         videoPlayer.addEventListener('loadedmetadata', () => {
                             console.log('[MediaSniffer] Video metadata loaded, duration:', videoPlayer.duration);
                         });
@@ -2489,6 +2632,7 @@
                             console.error('[MediaSniffer] Video element error:', videoPlayer.error?.code, videoPlayer.error?.message);
                         });
                         videoPlayer.addEventListener('play', () => {
+                            handleActiveInteraction();
                             if (currentPlayingVideo !== videoPlayer) {
                                 stopAllMediaPlayback();
                             }
@@ -2502,11 +2646,17 @@
                         updateModalHeaderCounters();
                     });
                     videoGallery.appendChild(card);
+                    if (videoObserver) {
+                        videoObserver.observe(card);
+                    }
                 }
             });
             existingCards.forEach((card, url) => {
                 if (!filteredUrlSet.has(url)) {
                     card.style.display = 'none';
+                    if (videoObserver) {
+                        videoObserver.unobserve(card);
+                    }
                 }
             });
             updateModalHeaderCounters();
@@ -3219,6 +3369,10 @@
     shadow.getElementById('ag-btn-close').addEventListener('click', () => {
         stopAllMediaPlayback();
         metadataQueue.length = 0;
+        if (videoObserver) {
+            videoObserver.disconnect();
+            videoObserver = null;
+        }
         isModalOpen = false;
         modal.classList.remove('active');
         document.body.style.overflow = savedBodyOverflow;
@@ -3256,12 +3410,16 @@
     /* 清空当前视频状态与播放实例 */
     function clearVideoState() {
         stopCurrentVideo();
+        if (videoObserver) {
+            videoObserver.disconnect();
+            videoObserver = null;
+        }
         const videoGallery = shadow.getElementById('ag-gallery-video');
         if (videoGallery) {
             videoGallery.querySelectorAll('.video-card').forEach(card => {
                 if (card['_hls']) {
                     try {
-                        card['_hls'].destroy();
+                        card['_hls']['destroy']();
                     } catch { }
                     card['_hls'] = null;
                 }

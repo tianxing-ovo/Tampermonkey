@@ -1657,9 +1657,13 @@
             font-size: 14px;
             font-weight: 600;
             color: var(--text-main);
-            white-space: nowrap;
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
+            line-height: 1.4;
+            word-break: break-all;
             cursor: pointer;
             transition: color 0.15s ease;
         }
@@ -2860,7 +2864,7 @@
                                 <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.MUSIC}"/></svg>
                             </div>
                             <div class="audio-info">
-                                <div class="audio-name" title="点击复制文件名">${item.name}</div>
+                                <div class="audio-name" title="${item.name}">${item.name}</div>
                                 <div class="audio-meta-row">
                                     <span class="audio-format-badge">${item.format}</span>
                                     ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
@@ -2955,7 +2959,7 @@
                                 <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.VIDEO}"/></svg>
                             </div>
                             <div class="audio-info">
-                                <div class="audio-name" title="点击复制文件名">${item.name}</div>
+                                <div class="audio-name" title="${item.name}">${item.name}</div>
                                 <div class="audio-meta-row">
                                     <span class="video-format-badge">${item.format}</span>
                                     ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}

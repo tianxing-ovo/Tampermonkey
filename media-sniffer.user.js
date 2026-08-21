@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.4.0
+// @version      1.5.0
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -2785,8 +2785,19 @@
         }
     }
 
-    let currentSortField = 'DEFAULT';
-    let currentSortOrder = 'ASC';
+    const STORAGE_KEY_SORT_FIELD = 'media_sniffer_sort_field';
+    const STORAGE_KEY_SORT_ORDER = 'media_sniffer_sort_order';
+
+    let currentSortField = (typeof GM_getValue === 'function' ? GM_getValue(STORAGE_KEY_SORT_FIELD, 'DEFAULT') : 'DEFAULT') || 'DEFAULT';
+    let currentSortOrder = (typeof GM_getValue === 'function' ? GM_getValue(STORAGE_KEY_SORT_ORDER, 'ASC') : 'ASC') || 'ASC';
+
+    /* 持久化保存用户的排序字段与升降序偏好 */
+    function saveSortPreferences() {
+        if (typeof GM_setValue === 'function') {
+            GM_setValue(STORAGE_KEY_SORT_FIELD, currentSortField);
+            GM_setValue(STORAGE_KEY_SORT_ORDER, currentSortOrder);
+        }
+    }
 
     /**
      * 更新排序切换按钮的文案与显隐状态
@@ -4513,6 +4524,7 @@
                 } else {
                     currentSortOrder = 'ASC';
                 }
+                saveSortPreferences();
                 sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
                     el.classList.toggle('active', el.dataset.value === val);
                 });
@@ -4537,8 +4549,23 @@
     if (sortOrderBtn) {
         sortOrderBtn.addEventListener('click', () => {
             currentSortOrder = currentSortOrder === 'ASC' ? 'DESC' : 'ASC';
+            saveSortPreferences();
             updateSortOrderButton();
             renderGallery();
+        });
+    }
+
+    const sortFieldLabels = {
+        DEFAULT: '默认',
+        NAME: '名称',
+        SIZE: '大小'
+    };
+    if (sortTrigger && sortFieldLabels[currentSortField]) {
+        sortTrigger.textContent = sortFieldLabels[currentSortField];
+    }
+    if (sortMenu) {
+        sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
+            el.classList.toggle('active', el.dataset.value === currentSortField);
         });
     }
     updateSortOrderButton();
@@ -4590,6 +4617,10 @@
     function locateCurrentPlaying() {
         if (!currentPlayingCard || !currentPlayingType) {
             return;
+        }
+        const bar = shadow.getElementById('ag-now-playing-bar');
+        if (bar && bar.style.display === 'none') {
+            bar.style.display = 'flex';
         }
         if (currentTab !== currentPlayingType) {
             switchTab(currentPlayingType);
@@ -4644,8 +4675,27 @@
             if (bar) {
                 bar.style.display = 'none';
             }
+            if (currentPlayingCard) {
+                showToast('按 L 键可重新定位播放');
+            }
         });
     }
+
+    document.addEventListener('keydown', (e) => {
+        if (!isModalOpen) {
+            return;
+        }
+        const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : '';
+        if (tag === 'input' || tag === 'textarea' || e.target.isContentEditable) {
+            return;
+        }
+        if (e.key === 'l' || e.key === 'L') {
+            if (currentPlayingCard) {
+                e.preventDefault();
+                locateCurrentPlaying();
+            }
+        }
+    });
 
     /* 初始启动扫描与动态监听 */
     function init() {

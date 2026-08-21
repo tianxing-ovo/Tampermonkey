@@ -85,6 +85,9 @@
     let savedBodyOverflow = null;
     let currentPlayingAudio = null;
     let currentPlayingVideo = null;
+    let currentPlayingItem = null;
+    let currentPlayingCard = null;
+    let currentPlayingType = null;
     let activeDownloadXhr = null;
     let isDownloadCancelled = false;
     // 存储等待探测元数据的音频元素队列
@@ -115,6 +118,7 @@
         if (currentPlayingAudio) {
             currentPlayingAudio.pause();
             currentPlayingAudio = null;
+            updateNowPlayingBar(null, null, null, false);
         }
     }
 
@@ -123,6 +127,7 @@
         if (currentPlayingVideo) {
             currentPlayingVideo.pause();
             currentPlayingVideo = null;
+            updateNowPlayingBar(null, null, null, false);
         }
     }
 
@@ -1647,6 +1652,140 @@
             color: var(--primary);
             font-weight: 600;
         }
+        /* 底部正在播放极简定位条 */
+        .now-playing-bar {
+            position: absolute;
+            bottom: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            border-radius: 30px;
+            padding: 7px 12px 7px 22px;
+            display: flex;
+            align-items: center;
+            gap: 16px;
+            box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.06);
+            z-index: 100;
+            max-width: 80%;
+            animation: agFadeInUp 0.25s ease-out;
+        }
+        @keyframes agFadeInUp {
+            from {
+                opacity: 0;
+                transform: translate(-50%, 15px);
+            }
+            to {
+                opacity: 1;
+                transform: translate(-50%, 0);
+            }
+        }
+        .now-playing-title {
+            color: #f1f5f9;
+            font-size: 13px;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 360px;
+            cursor: pointer;
+            transition: color 0.15s;
+            letter-spacing: 0.2px;
+        }
+        .now-playing-title:hover {
+            color: #a5b4fc;
+        }
+        .now-playing-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-shrink: 0;
+        }
+        .btn-now-playing {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.16);
+            color: #ffffff;
+            padding: 4px 13px;
+            border-radius: 14px;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            outline: none;
+            user-select: none;
+        }
+        .btn-now-playing:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #ffffff;
+        }
+        #ag-btn-locate-playing {
+            background: rgba(99, 102, 241, 0.25);
+            border-color: rgba(129, 140, 248, 0.45);
+            color: #e0e7ff;
+        }
+        #ag-btn-locate-playing:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #ffffff;
+            box-shadow: 0 2px 8px rgba(79, 70, 229, 0.4);
+        }
+        .btn-now-playing-pause:hover {
+            background: #ef4444;
+            border-color: #ef4444;
+        }
+        .btn-now-playing-resume {
+            background: rgba(16, 185, 129, 0.22);
+            border-color: rgba(52, 211, 153, 0.4);
+            color: #6ee7b7;
+        }
+        .btn-now-playing-resume:hover {
+            background: #10b981;
+            border-color: #10b981;
+            color: #ffffff;
+        }
+        .btn-now-playing-close {
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: rgba(255, 255, 255, 0.6);
+            font-size: 11px;
+            cursor: pointer;
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            transition: all 0.15s;
+            line-height: 1;
+            outline: none;
+            user-select: none;
+            margin-left: 2px;
+        }
+        .btn-now-playing-close:hover {
+            color: #ffffff;
+            background: rgba(255, 255, 255, 0.22);
+            border-color: rgba(255, 255, 255, 0.28);
+        }
+        .audio-card.is-playing,
+        .video-card.is-playing {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.35);
+        }
+        .audio-card.locate-pulse,
+        .video-card.locate-pulse {
+            animation: agCardPulse 1.2s ease-in-out;
+        }
+        @keyframes agCardPulse {
+            0%, 100% {
+                box-shadow: 0 0 0 2px rgba(79, 70, 229, 0.35);
+            }
+            50% {
+                box-shadow: 0 0 0 6px rgba(79, 70, 229, 0.6);
+            }
+        }
         /* 媒体画廊主体 */
         .modal-body {
             flex: 1;
@@ -1984,22 +2123,25 @@
         /* 进度提示浮层 */
         .toast-notify {
             position: fixed;
-            bottom: 30px;
+            top: 90px;
             left: 50%;
-            transform: translateX(-50%);
+            transform: translate(-50%, -50%);
             background: rgba(15, 23, 42, 0.92);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
             color: #fff;
-            padding: 8px 16px;
-            border-radius: 10px;
-            border: 1px solid rgba(255,255,255,0.1);
-            box-shadow: 0 10px 30px rgba(0,0,0,0.25);
+            padding: 8px 18px;
+            border-radius: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
             z-index: 2147483648;
             display: none;
             align-items: center;
             gap: 12px;
             font-size: 13px;
+            font-weight: 500;
         }
-        .toast-notify.active { display: flex; animation: toastIn 0.2s ease; }
+        .toast-notify.active { display: flex; animation: toastIn 0.25s ease; }
         .toast-cancel-btn {
             background: rgba(239, 68, 68, 0.25);
             color: #fca5a5;
@@ -2015,7 +2157,7 @@
             background: rgba(239, 68, 68, 0.5);
             color: #ffffff;
         }
-        @keyframes toastIn { from { opacity: 0; transform: translate(-50%, 10px); } to { opacity: 1; transform: translate(-50%, 0); } }
+        @keyframes toastIn { from { opacity: 0; transform: translate(-50%, calc(-50% - 10px)); } to { opacity: 1; transform: translate(-50%, -50%); } }
         /* 全屏高清图片灯箱 */
         .lightbox-overlay {
             position: fixed;
@@ -2161,6 +2303,14 @@
             <div class="gallery-grid" id="ag-gallery-image"></div>
             <div class="audio-list" id="ag-gallery-audio" style="display:none"></div>
             <div class="video-list" id="ag-gallery-video" style="display:none"></div>
+        </div>
+        <div class="now-playing-bar" id="ag-now-playing-bar" style="display:none">
+            <div class="now-playing-title" id="ag-now-playing-title" title="点击定位"></div>
+            <div class="now-playing-actions">
+                <button type="button" class="btn-now-playing" id="ag-btn-locate-playing">定位</button>
+                <button type="button" class="btn-now-playing btn-now-playing-pause" id="ag-btn-pause-playing">暂停</button>
+                <button type="button" class="btn-now-playing-close" id="ag-btn-close-playing" title="关闭">✕</button>
+            </div>
         </div>
     `;
     shadow.appendChild(modal);
@@ -3064,10 +3214,21 @@
                         audioPlayer.addEventListener('pointerdown', handleActiveInteraction);
                         audioPlayer.addEventListener('play', () => {
                             handleActiveInteraction();
-                            if (currentPlayingAudio !== audioPlayer) {
-                                stopAllMediaPlayback();
+                            if (currentPlayingAudio && currentPlayingAudio !== audioPlayer) {
+                                currentPlayingAudio.pause();
                             }
                             currentPlayingAudio = audioPlayer;
+                            updateNowPlayingBar(item, card, 'AUDIO', true);
+                        });
+                        audioPlayer.addEventListener('pause', () => {
+                            if (currentPlayingAudio === audioPlayer) {
+                                updateNowPlayingBar(item, card, 'AUDIO', false);
+                            }
+                        });
+                        audioPlayer.addEventListener('ended', () => {
+                            if (currentPlayingAudio === audioPlayer) {
+                                updateNowPlayingBar(null, null, null, false);
+                            }
                         });
                         metadataQueue.push(audioPlayer);
                     }
@@ -3171,10 +3332,21 @@
                         });
                         videoPlayer.addEventListener('play', () => {
                             handleActiveInteraction();
-                            if (currentPlayingVideo !== videoPlayer) {
-                                stopAllMediaPlayback();
+                            if (currentPlayingVideo && currentPlayingVideo !== videoPlayer) {
+                                currentPlayingVideo.pause();
                             }
                             currentPlayingVideo = videoPlayer;
+                            updateNowPlayingBar(item, card, 'VIDEO', true);
+                        });
+                        videoPlayer.addEventListener('pause', () => {
+                            if (currentPlayingVideo === videoPlayer) {
+                                updateNowPlayingBar(item, card, 'VIDEO', false);
+                            }
+                        });
+                        videoPlayer.addEventListener('ended', () => {
+                            if (currentPlayingVideo === videoPlayer) {
+                                updateNowPlayingBar(null, null, null, false);
+                            }
                         });
                     }
                     card.addEventListener('click', () => {
@@ -4370,6 +4542,110 @@
         });
     }
     updateSortOrderButton();
+
+    /**
+     * 更新底部正在播放定位栏的状态与内容
+     * 
+     * @param {Object|null} item 正在播放或暂停的媒体对象
+     * @param {HTMLElement|null} card 对应的 DOM 卡片节点
+     * @param {string|null} type 媒体类型
+     * @param {boolean} isPlaying 是否正在播放
+     */
+    function updateNowPlayingBar(item, card, type, isPlaying) {
+        const bar = shadow.getElementById('ag-now-playing-bar');
+        const titleEl = shadow.getElementById('ag-now-playing-title');
+        const toggleBtn = shadow.getElementById('ag-btn-pause-playing');
+        if (!bar || !titleEl) {
+            return;
+        }
+        if (currentPlayingCard && currentPlayingCard !== card) {
+            currentPlayingCard.classList.remove('is-playing');
+        }
+        if (!item || !card) {
+            bar.style.display = 'none';
+            if (card) {
+                card.classList.remove('is-playing');
+            }
+            currentPlayingItem = null;
+            currentPlayingCard = null;
+            currentPlayingType = null;
+            return;
+        }
+        currentPlayingItem = item;
+        currentPlayingCard = card;
+        currentPlayingType = type;
+        card.classList.toggle('is-playing', isPlaying);
+        titleEl.textContent = item.name || '未知媒体';
+        titleEl.title = item.name || '';
+        if (toggleBtn) {
+            toggleBtn.textContent = isPlaying ? '暂停' : '继续';
+            toggleBtn.classList.toggle('btn-now-playing-resume', !isPlaying);
+        }
+        bar.style.display = 'flex';
+    }
+
+    /**
+     * 定位并平滑滚动到当前正在播放的媒体卡片
+     */
+    function locateCurrentPlaying() {
+        if (!currentPlayingCard || !currentPlayingType) {
+            return;
+        }
+        if (currentTab !== currentPlayingType) {
+            switchTab(currentPlayingType);
+        }
+        currentPlayingCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        currentPlayingCard.classList.remove('locate-pulse');
+        void currentPlayingCard.offsetWidth;
+        currentPlayingCard.classList.add('locate-pulse');
+        setTimeout(() => {
+            if (currentPlayingCard) {
+                currentPlayingCard.classList.remove('locate-pulse');
+            }
+        }, 1500);
+    }
+
+    /**
+     * 切换当前媒体的播放与暂停状态
+     */
+    function togglePlayPauseCurrent() {
+        if (!currentPlayingCard || !currentPlayingType) {
+            return;
+        }
+        const mediaEl = currentPlayingCard.querySelector(currentPlayingType === 'AUDIO' ? 'audio' : 'video');
+        if (!mediaEl) {
+            return;
+        }
+        if (mediaEl.paused) {
+            mediaEl.play().catch(() => {});
+        } else {
+            mediaEl.pause();
+        }
+    }
+
+    const locatePlayingBtn = shadow.getElementById('ag-btn-locate-playing');
+    const locatePlayingTitle = shadow.getElementById('ag-now-playing-title');
+    const pausePlayingBtn = shadow.getElementById('ag-btn-pause-playing');
+    const closePlayingBtn = shadow.getElementById('ag-btn-close-playing');
+
+    if (locatePlayingBtn) {
+        locatePlayingBtn.addEventListener('click', locateCurrentPlaying);
+    }
+    if (locatePlayingTitle) {
+        locatePlayingTitle.addEventListener('click', locateCurrentPlaying);
+    }
+    if (pausePlayingBtn) {
+        pausePlayingBtn.addEventListener('click', togglePlayPauseCurrent);
+    }
+    if (closePlayingBtn) {
+        closePlayingBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const bar = shadow.getElementById('ag-now-playing-bar');
+            if (bar) {
+                bar.style.display = 'none';
+            }
+        });
+    }
 
     /* 初始启动扫描与动态监听 */
     function init() {

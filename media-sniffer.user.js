@@ -723,10 +723,14 @@
                 format
             });
         });
-        setTimeout(scanPageImages, 300);
-        setTimeout(scanPageVideos, 300);
-        setTimeout(scanPageImages, 800);
-        setTimeout(scanPageVideos, 800);
+        setTimeout(() => {
+            scanPageImages();
+            scanPageVideos();
+        }, 300);
+        setTimeout(() => {
+            scanPageImages();
+            scanPageVideos();
+        }, 800);
     }
 
     // 拦截fetch请求以捕获网盘数据接口与视频流
@@ -2325,7 +2329,7 @@
         <div class="filter-bar">
             <div class="filter-group">
                 <div class="filter-format-container" id="ag-format-checkboxes"></div>
-                <label class="filter-item filter-dedup-label" id="ag-dedup-label-wrap"><input type="checkbox" id="ag-filter-dedup" class="filter-checkbox" checked> 智能去重</label>
+                <label class="filter-item" id="ag-dedup-label-wrap"><input type="checkbox" id="ag-filter-dedup" class="filter-checkbox" checked> 智能去重</label>
             </div>
             <div class="filter-right-controls">
                 <span class="search-wrap" id="ag-search-wrap" style="display:none">
@@ -2510,10 +2514,7 @@
         e.stopPropagation();
         showLightboxNext();
     });
-    lightboxContent?.addEventListener('click', (e) => {
-        if (e.target === lightboxPrev || e.target === lightboxNext) {
-            return;
-        }
+    lightboxContent?.addEventListener('click', () => {
         if (!hasMovedSignificantly) {
             closeLightbox();
         }
@@ -2525,9 +2526,6 @@
         updateLightboxTransform();
     }, { passive: false });
     lightboxContent?.addEventListener('pointerdown', (e) => {
-        if (e.target === lightboxPrev || e.target === lightboxNext) {
-            return;
-        }
         isLightboxDragging = true;
         hasMovedSignificantly = false;
         clickStartX = e.clientX;
@@ -3207,8 +3205,6 @@
                 });
                 imgGallery.appendChild(card);
             });
-            updateModalHeaderCounters();
-            updateFloatingBadge();
         } else if (currentTab === 'AUDIO') {
             imgGallery.style.display = 'none';
             audioGallery.style.display = 'flex';
@@ -3312,8 +3308,6 @@
                     card.style.display = 'none';
                 }
             });
-            updateModalHeaderCounters();
-            updateFloatingBadge();
         } else {
             imgGallery.style.display = 'none';
             audioGallery.style.display = 'none';

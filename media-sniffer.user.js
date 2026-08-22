@@ -85,7 +85,6 @@
     let savedBodyOverflow = null;
     let currentPlayingAudio = null;
     let currentPlayingVideo = null;
-    let currentPlayingItem = null;
     let currentPlayingCard = null;
     let currentPlayingType = null;
     let activeDownloadXhr = null;
@@ -108,9 +107,7 @@
         MUSIC: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
         VIDEO: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z',
         PREV: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z',
-        NEXT: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
-        FULLSCREEN: 'M7 14H5v5h5v-2H7v-3zm-2-4h2V7h3V5H5v5zm12 7h-3v2h5v-5h-2v3zM14 5v2h3v3h2V5h-5z',
-        FULLSCREEN_EXIT: 'M5 16h3v3h2v-5H5v2zm3-8H5v2h5V5H8v3zm6 11h2v-3h3v-2h-5v5zm2-11V5h-2v5h5V8h-3z'
+        NEXT: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'
     };
 
     /* 停止当前正在播放的音频实例 */
@@ -4654,12 +4651,10 @@
             if (card) {
                 card.classList.remove('is-playing');
             }
-            currentPlayingItem = null;
             currentPlayingCard = null;
             currentPlayingType = null;
             return;
         }
-        currentPlayingItem = item;
         currentPlayingCard = card;
         currentPlayingType = type;
         card.classList.toggle('is-playing', isPlaying);

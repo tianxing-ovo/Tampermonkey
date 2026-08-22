@@ -562,6 +562,11 @@
             cleanUrl = decodeURIComponent(cleanUrl);
         } catch { }
         if (cleanVideoUrls.has(cleanUrl)) {
+            const exist = videoStore.get(url);
+            if (exist && meta.name && (!exist.hasCustomName || !exist.name)) {
+                exist.name = meta.name;
+                exist.hasCustomName = true;
+            }
             return;
         }
         cleanVideoUrls.add(cleanUrl);
@@ -571,7 +576,16 @@
             knownVideoFormats.add(fmtKey);
             checkedVideoFormats.add(fmtKey);
         }
-        const name = meta.name || `video_${videoStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
+        let hasCustomName = Boolean(meta.name);
+        let defaultName = meta.name;
+        if (!defaultName) {
+            const pageTitle = sanitizeFileName(document.querySelector('h1, .entry-title, .post-title')?.innerText || document.title.replace(/-[^-]+$/, ''));
+            if (pageTitle && pageTitle.length >= 2) {
+                defaultName = `${pageTitle}${format ? `.${format.toLowerCase()}` : ''}`;
+                hasCustomName = true;
+            }
+        }
+        const name = defaultName || `video_${videoStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
         if (name && !name.startsWith('video_') && !source.startsWith('ALIST')) {
             for (const exist of videoStore.values()) {
@@ -583,6 +597,7 @@
         const videoObj = {
             url,
             name,
+            hasCustomName,
             author,
             format,
             source,
@@ -977,8 +992,9 @@
         }
         if (imageStore.has(url)) {
             const exist = imageStore.get(url);
-            if (meta.name && !exist.name) {
+            if (meta.name && (!exist.hasCustomName || !exist.name)) {
                 exist.name = meta.name;
+                exist.hasCustomName = true;
             }
             return;
         }
@@ -989,6 +1005,7 @@
             knownImageFormats.add(fmtKey);
             checkedImageFormats.add(fmtKey);
         }
+        const hasCustomName = Boolean(meta.name);
         let autoName = meta.name || '';
         if (!autoName && !url.startsWith('data:') && !url.startsWith('blob:')) {
             try {
@@ -1003,6 +1020,7 @@
             url,
             hdUrl: upgradeToHdUrl(url),
             name: autoName,
+            hasCustomName,
             format,
             source,
             width: 0,
@@ -1082,7 +1100,7 @@
 
     // 图片元素中可能存放图片地址的属性名称集合
     const POSSIBLE_IMG_ATTRS = [
-        'data-original', 'data-src', 'data-actualsrc', 'data-url', 'zoomfile',
+        'data-original', 'data-src', 'data-srcset', 'data-actualsrc', 'data-url', 'zoomfile',
         'file', 'original', 'srcset', 'src', 'data-lazy-src', 'xlink:href', 'href'
     ];
 
@@ -1093,12 +1111,27 @@
         }
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
-            const altText = el.getAttribute('alt') || el.getAttribute('title') || el.closest('a')?.getAttribute('title') || '';
+            let altText = el.getAttribute('alt') || el.getAttribute('title') || '';
+            if (!altText && el.tagName.toLowerCase() === 'source' && el.parentElement) {
+                const siblingImg = el.parentElement.querySelector('img');
+                if (siblingImg) {
+                    altText = siblingImg.getAttribute('alt') || siblingImg.getAttribute('title') || '';
+                }
+            }
+            if (!altText) {
+                altText = el.closest('a')?.getAttribute('title') || '';
+            }
+            if (!altText) {
+                const card = el.closest('.post-list-item, .post-info, article, .item-in, [class*="card"], [class*="post"]');
+                if (card) {
+                    altText = card.querySelector('h1, h2, h3, .post-title, .entry-title, .title')?.innerText || '';
+                }
+            }
             const cleanName = sanitizeFileName(altText);
             for (const attr of POSSIBLE_IMG_ATTRS) {
                 const val = el.getAttribute(attr);
                 if (val) {
-                    if (attr === 'srcset') {
+                    if (attr === 'srcset' || attr === 'data-srcset') {
                         const parts = val.split(',');
                         parts.forEach(p => {
                             const u = p.trim().split(/\s+/)[0];
@@ -1140,7 +1173,16 @@
     function scanPageVideos() {
         const videoElements = document.querySelectorAll('video, video source');
         videoElements.forEach(el => {
-            const titleText = el.getAttribute('title') || el.getAttribute('alt') || '';
+            let titleText = el.getAttribute('title') || el.getAttribute('alt') || '';
+            if (!titleText) {
+                const card = el.closest('.post-list-item, .post-info, article, .item-in, [class*="card"], [class*="post"]');
+                if (card) {
+                    titleText = card.querySelector('h1, h2, h3, .post-title, .entry-title, .title')?.innerText || '';
+                }
+            }
+            if (!titleText) {
+                titleText = document.querySelector('h1, .entry-title, .post-title')?.innerText || '';
+            }
             const cleanName = sanitizeFileName(titleText);
             const src = el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-url');
             if (src && VIDEO_EXT_REGEX.test(src)) {
@@ -2147,9 +2189,12 @@
             font-size: 13px;
             font-weight: 600;
             color: var(--text-main);
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
             overflow: hidden;
             text-overflow: ellipsis;
-            white-space: nowrap;
+            word-break: break-all;
             line-height: 1.4;
             cursor: pointer;
             text-align: center;

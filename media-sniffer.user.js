@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.5.0
+// @version      1.5.1
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -1373,7 +1373,8 @@
         }
         /* 顶部标题栏与导航 */
         .modal-header {
-            height: 64px;
+            min-height: 64px;
+            height: auto;
             background: var(--bg-glass);
             border-bottom: 1px solid var(--border-glass);
             backdrop-filter: blur(16px);
@@ -2326,6 +2327,197 @@
         }
         .lightbox-prev { left: 24px; }
         .lightbox-next { right: 24px; }
+
+        /* 移动端与窄屏自适应响应式规则 */
+        @media (max-width: 768px) {
+            .modal-header {
+                position: relative;
+                min-height: 56px;
+                height: auto;
+                padding: 10px 12px;
+                gap: 8px;
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .header-left {
+                width: 100%;
+                padding-right: 36px;
+                gap: 8px;
+            }
+            .header-title {
+                font-size: 15px;
+            }
+            .header-title svg {
+                width: 18px;
+                height: 18px;
+            }
+            .tab-switcher {
+                padding: 2px;
+            }
+            .tab-btn {
+                padding: 4px 8px;
+                font-size: 12px;
+            }
+            .header-selected-count,
+            .header-dedup-stat {
+                font-size: 11px;
+            }
+            .header-actions {
+                width: 100%;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                flex-wrap: wrap;
+            }
+            .btn {
+                padding: 5px 8px;
+                font-size: 12px;
+                border-radius: 6px;
+            }
+            .btn-close {
+                position: absolute;
+                top: 8px;
+                right: 8px;
+                padding: 6px;
+                z-index: 10;
+            }
+            .filter-bar {
+                padding: 8px 12px;
+                gap: 8px;
+                flex-direction: column;
+                align-items: stretch;
+            }
+            .filter-group {
+                gap: 6px 12px;
+                font-size: 12px;
+            }
+            .filter-format-container {
+                gap: 6px 10px;
+            }
+            .filter-right-controls {
+                width: 100%;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            .search-wrap {
+                flex: 1;
+            }
+            .search-input {
+                width: 100%;
+                font-size: 12px;
+                padding: 5px 24px 5px 26px;
+            }
+            .sort-control-group {
+                height: 28px;
+            }
+            .sort-select-btn {
+                padding: 0 8px;
+                font-size: 12px;
+                min-width: 44px;
+            }
+            .modal-body {
+                padding: 10px 8px calc(10px + env(safe-area-inset-bottom, 0px));
+            }
+            .gallery-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 8px;
+            }
+            .img-thumb-wrapper {
+                height: 130px;
+            }
+            .img-meta {
+                padding: 6px 8px 8px;
+                gap: 2px;
+            }
+            .img-name {
+                font-size: 12px;
+            }
+            .img-dim-row {
+                font-size: 10px;
+            }
+            .audio-list,
+            .video-list {
+                gap: 8px;
+            }
+            .audio-card,
+            .video-card {
+                padding: 10px 12px;
+                flex-direction: column;
+                align-items: stretch;
+                gap: 10px;
+            }
+            .audio-left {
+                width: 100%;
+                gap: 10px;
+            }
+            .audio-icon-box {
+                width: 36px;
+                height: 36px;
+            }
+            .audio-icon-box svg {
+                width: 18px;
+                height: 18px;
+            }
+            .audio-name {
+                font-size: 13px;
+            }
+            .audio-right {
+                width: 100%;
+                justify-content: stretch;
+            }
+            .audio-player-wrapper {
+                width: 100%;
+            }
+            .audio-player-wrapper audio {
+                width: 100%;
+                height: 32px;
+            }
+            .video-player-wrapper {
+                width: 100%;
+                max-height: 200px;
+            }
+            .now-playing-bar {
+                bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+                left: 10px;
+                right: 10px;
+                transform: none;
+                max-width: calc(100% - 20px);
+                padding: 6px 10px 6px 14px;
+                gap: 8px;
+            }
+            .now-playing-title {
+                font-size: 12px;
+                max-width: 130px;
+            }
+            .btn-now-playing {
+                padding: 3px 8px;
+                font-size: 11px;
+            }
+            .scroll-nav-capsule {
+                bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+                right: 12px;
+            }
+            .fab-trigger {
+                width: 48px;
+                height: 48px;
+                bottom: calc(18px + env(safe-area-inset-bottom, 0px));
+                right: 16px;
+            }
+            .fab-icon {
+                width: 22px;
+                height: 22px;
+            }
+            .lightbox-nav-btn {
+                width: 40px;
+                height: 40px;
+            }
+            .lightbox-prev {
+                left: 10px;
+            }
+            .lightbox-next {
+                right: 10px;
+            }
+        }
     `;
     shadow.appendChild(styleEl);
 
@@ -4066,12 +4258,25 @@
      * @returns {{x: number, y: number}} 裁剪后的安全坐标对象
      */
     function clampFabPosition(x, y) {
-        const maxX = window.innerWidth - 64;
-        const maxY = window.innerHeight - 64;
+        const fabWidth = fab?.offsetWidth || 56;
+        const fabHeight = fab?.offsetHeight || 56;
+        const maxX = window.innerWidth - fabWidth - 8;
+        const maxY = window.innerHeight - fabHeight - 8;
         return {
-            x: Math.max(10, Math.min(x, maxX)),
-            y: Math.max(10, Math.min(y, maxY))
+            x: Math.max(8, Math.min(x, maxX)),
+            y: Math.max(8, Math.min(y, maxY))
         };
+    }
+
+    /* 校验并重新约束悬浮球在当前可视窗口内 */
+    function reClampFab() {
+        if (fab.style.left && fab.style.left !== 'auto') {
+            const currentLeft = parseFloat(fab.style.left) || 0;
+            const currentTop = parseFloat(fab.style.top) || 0;
+            const { x, y } = clampFabPosition(currentLeft, currentTop);
+            fab.style.left = `${x}px`;
+            fab.style.top = `${y}px`;
+        }
     }
 
     // 从持久化存储恢复悬浮球的历史位置
@@ -4082,6 +4287,11 @@
         fab.style.top = `${y}px`;
         fab.style.right = 'auto';
         fab.style.bottom = 'auto';
+    }
+
+    window.addEventListener('resize', reClampFab);
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', reClampFab, { once: true });
     }
 
     /**

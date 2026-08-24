@@ -2487,14 +2487,24 @@
             }
             .now-playing-title {
                 font-size: 12px;
-                max-width: 130px;
+                flex: 1;
+                min-width: 0;
+                max-width: none;
+                display: -webkit-box;
+                -webkit-line-clamp: 2;
+                -webkit-box-orient: vertical;
+                overflow: hidden;
+                text-overflow: ellipsis;
+                white-space: normal;
+                word-break: break-all;
+                line-height: 1.35;
             }
             .btn-now-playing {
                 padding: 3px 8px;
                 font-size: 11px;
             }
             .scroll-nav-capsule {
-                bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+                bottom: calc(72px + env(safe-area-inset-bottom, 0px));
                 right: 12px;
             }
             .fab-trigger {

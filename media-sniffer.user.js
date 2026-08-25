@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.5.1
+// @version      1.5.2
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -236,6 +236,7 @@
             .replace(/@\d+[wh]_\d+[wh].*/i, '')
             .replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2')
             .replace(/\/thumb\/\d+\//i, '/original/')
+            .replace(/-\d+x\d+\.(jpe?g|png|webp|gif)$/i, '.$1')
             .replace(/\.(jpg|jpeg|png)\.webp$/i, '.$1');
     }
 
@@ -1104,6 +1105,98 @@
         'file', 'original', 'srcset', 'src', 'data-lazy-src', 'xlink:href', 'href'
     ];
 
+    /**
+     * 提取媒体元素的上下文标题
+     * 
+     * @param {HTMLElement} el 媒体元素
+     * @returns {string} 标题文本
+     */
+    function extractElementTitle(el) {
+        if (!el) {
+            return '';
+        }
+        let rawTitle = el.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('aria-label') || '';
+        if (!rawTitle && el.tagName.toLowerCase() === 'source' && el.parentElement) {
+            const siblingMedia = el.parentElement.querySelector('img, video');
+            if (siblingMedia) {
+                rawTitle = siblingMedia.getAttribute('alt') || siblingMedia.getAttribute('title') || siblingMedia.getAttribute('aria-label') || '';
+            }
+        }
+        if (!rawTitle) {
+            const parentA = el.closest('a');
+            if (parentA) {
+                rawTitle = parentA.getAttribute('title') || parentA.getAttribute('aria-label') || '';
+            }
+        }
+        if (!rawTitle) {
+            const figure = el.closest('figure');
+            if (figure) {
+                rawTitle = (figure.querySelector('figcaption')?.textContent || '').trim();
+            }
+        }
+        // 排除广告与横幅容器
+        const isAdElement = Boolean(el.closest('.ad-slot, [class*="ad-slot"], [class*="ad_slot"], [class*="ad-banner"], [class*="advertisement"], [id*="google_ads"]'));
+        if (!rawTitle && !isAdElement) {
+            const card = el.closest('article, .card, [class~="card"], [class~="post"], .post-list-item, .post-item, .video-card, .recommended-card, .item-in, .grid-item, .media-item, [class*="post-list"], [class*="video-item"]');
+            if (card) {
+                const heading = card.querySelector('h1, h2, h3, h4, [role="heading"], .card-title, .post-title, .entry-title, .video-title, .title');
+                if (heading && !heading.contains(el)) {
+                    rawTitle = (heading.textContent || '').trim();
+                }
+            } else {
+                let current = el.parentElement;
+                let depth = 0;
+                const rootTags = new Set(['MAIN', 'BODY', 'HTML', 'HEADER', 'FOOTER', 'NAV', 'ASIDE']);
+                while (current && !rootTags.has(current.tagName) && depth < 4) {
+                    const heading = current.querySelector('h1, h2, h3, h4, [role="heading"], .card-title, .post-title, .entry-title, .video-title, .title');
+                    if (heading && !heading.contains(el)) {
+                        const text = (heading.textContent || '').trim();
+                        if (text && text.length >= 2 && text.length <= 120) {
+                            rawTitle = text;
+                            break;
+                        }
+                    }
+                    current = current.parentElement;
+                    depth++;
+                }
+            }
+        }
+        return sanitizeFileName(rawTitle);
+    }
+
+    /**
+     * 解析 srcset 并提取最高清图片链接
+     * 
+     * @param {string} srcsetValue srcset 属性值
+     * @returns {string} 最高清图片链接
+     */
+    function getBestUrlFromSrcset(srcsetValue) {
+        if (!srcsetValue || typeof srcsetValue !== 'string') {
+            return '';
+        }
+        const candidates = srcsetValue.split(',').map(item => {
+            const parts = item.trim().split(/\s+/);
+            const url = parts[0] || '';
+            const descriptor = parts[1] || '';
+            let weight = 0;
+            if (descriptor.endsWith('w')) {
+                weight = parseInt(descriptor.slice(0, -1), 10) || 0;
+            } else if (descriptor.endsWith('x')) {
+                weight = Math.round(parseFloat(descriptor.slice(0, -1)) * 1000) || 0;
+            }
+            return { url, weight };
+        }).filter(item => {
+            return Boolean(item.url);
+        });
+        if (candidates.length === 0) {
+            return '';
+        }
+        candidates.sort((a, b) => {
+            return b.weight - a.weight;
+        });
+        return candidates[0].url;
+    }
+
     /* 深度扫描当前文档中的所有图片元素 */
     function scanPageImages() {
         if (isImagesManuallyCleared) {
@@ -1111,38 +1204,29 @@
         }
         const imgElements = document.querySelectorAll('img, picture source, image');
         imgElements.forEach(el => {
-            let altText = el.getAttribute('alt') || el.getAttribute('title') || '';
-            if (!altText && el.tagName.toLowerCase() === 'source' && el.parentElement) {
-                const siblingImg = el.parentElement.querySelector('img');
-                if (siblingImg) {
-                    altText = siblingImg.getAttribute('alt') || siblingImg.getAttribute('title') || '';
-                }
+            if (el.tagName.toLowerCase() === 'img' && el.closest('picture')?.querySelector('source[srcset], source[src]')) {
+                return;
             }
-            if (!altText) {
-                altText = el.closest('a')?.getAttribute('title') || '';
+            const cleanName = extractElementTitle(el);
+            let targetUrl = '';
+            const srcsetValue = el.getAttribute('srcset') || el.getAttribute('data-srcset');
+            if (srcsetValue) {
+                targetUrl = getBestUrlFromSrcset(srcsetValue);
             }
-            if (!altText) {
-                const card = el.closest('.post-list-item, .post-info, article, .item-in, [class*="card"], [class*="post"]');
-                if (card) {
-                    altText = card.querySelector('h1, h2, h3, .post-title, .entry-title, .title')?.innerText || '';
-                }
-            }
-            const cleanName = sanitizeFileName(altText);
-            for (const attr of POSSIBLE_IMG_ATTRS) {
-                const val = el.getAttribute(attr);
-                if (val) {
+            if (!targetUrl) {
+                for (const attr of POSSIBLE_IMG_ATTRS) {
                     if (attr === 'srcset' || attr === 'data-srcset') {
-                        const parts = val.split(',');
-                        parts.forEach(p => {
-                            const u = p.trim().split(/\s+/)[0];
-                            if (u) {
-                                registerImage(u, 'IMG-SRCSET', { name: cleanName });
-                            }
-                        });
-                    } else {
-                        registerImage(val, 'IMG', { name: cleanName });
+                        continue;
+                    }
+                    const val = el.getAttribute(attr);
+                    if (val) {
+                        targetUrl = val;
+                        break;
                     }
                 }
+            }
+            if (targetUrl) {
+                registerImage(targetUrl, 'IMG', { name: cleanName });
             }
         });
         // 扫描带有背景样式的容器元素
@@ -1173,17 +1257,11 @@
     function scanPageVideos() {
         const videoElements = document.querySelectorAll('video, video source');
         videoElements.forEach(el => {
-            let titleText = el.getAttribute('title') || el.getAttribute('alt') || '';
-            if (!titleText) {
-                const card = el.closest('.post-list-item, .post-info, article, .item-in, [class*="card"], [class*="post"]');
-                if (card) {
-                    titleText = card.querySelector('h1, h2, h3, .post-title, .entry-title, .title')?.innerText || '';
-                }
+            let cleanName = extractElementTitle(el);
+            if (!cleanName) {
+                const pageTitle = (document.querySelector('h1, .entry-title, .post-title')?.textContent || '').trim();
+                cleanName = sanitizeFileName(pageTitle);
             }
-            if (!titleText) {
-                titleText = document.querySelector('h1, .entry-title, .post-title')?.innerText || '';
-            }
-            const cleanName = sanitizeFileName(titleText);
             const src = el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-url');
             if (src && VIDEO_EXT_REGEX.test(src)) {
                 registerVideo(src, 'VIDEO-TAG', { name: cleanName });
@@ -3084,38 +3162,83 @@
         }
     }
 
-    const STORAGE_KEY_SORT_FIELD = 'media_sniffer_sort_field';
-    const STORAGE_KEY_SORT_ORDER = 'media_sniffer_sort_order';
+    const STORAGE_KEY_TAB_SORT_STATE = 'media_sniffer_tab_sort_state';
 
-    let currentSortField = (typeof GM_getValue === 'function' ? GM_getValue(STORAGE_KEY_SORT_FIELD, 'DEFAULT') : 'DEFAULT') || 'DEFAULT';
-    let currentSortOrder = (typeof GM_getValue === 'function' ? GM_getValue(STORAGE_KEY_SORT_ORDER, 'ASC') : 'ASC') || 'ASC';
+    // 存储图片音频视频各自独立的排序状态字典
+    const tabSortState = {
+        IMAGE: { field: 'DEFAULT', order: 'ASC' },
+        AUDIO: { field: 'DEFAULT', order: 'ASC' },
+        VIDEO: { field: 'DEFAULT', order: 'ASC' }
+    };
 
-    /* 持久化保存用户的排序字段与升降序偏好 */
+    try {
+        const savedSortStateStr = (typeof GM_getValue === 'function') ? GM_getValue(STORAGE_KEY_TAB_SORT_STATE, null) : null;
+        if (savedSortStateStr) {
+            const parsed = JSON.parse(savedSortStateStr);
+            if (parsed && typeof parsed === 'object') {
+                ['IMAGE', 'AUDIO', 'VIDEO'].forEach(tab => {
+                    if (parsed[tab]) {
+                        tabSortState[tab].field = parsed[tab].field || 'DEFAULT';
+                        tabSortState[tab].order = parsed[tab].order || 'ASC';
+                    }
+                });
+            }
+        }
+    } catch { }
+
+    /**
+     * 获取当前选项卡激活的排序字段
+     * 
+     * @returns {string} 排序字段标识
+     */
+    function getCurrentSortField() {
+        return tabSortState[currentTab]?.field || 'DEFAULT';
+    }
+
+    /**
+     * 获取当前选项卡激活的排序方向
+     * 
+     * @returns {string} 排序方向标识
+     */
+    function getCurrentSortOrder() {
+        return tabSortState[currentTab]?.order || 'ASC';
+    }
+
+    /* 持久化保存所有选项卡各自独立的排序偏好 */
     function saveSortPreferences() {
         if (typeof GM_setValue === 'function') {
-            GM_setValue(STORAGE_KEY_SORT_FIELD, currentSortField);
-            GM_setValue(STORAGE_KEY_SORT_ORDER, currentSortOrder);
+            GM_setValue(STORAGE_KEY_TAB_SORT_STATE, JSON.stringify(tabSortState));
         }
     }
 
-    /**
-     * 更新排序切换按钮的文案与显隐状态
-     */
-    function updateSortOrderButton() {
+    /* 刷新排序下拉菜单文案与升降序按钮图标 */
+    function updateSortUI() {
         const orderBtn = shadow.getElementById('ag-btn-sort-order');
-        if (!orderBtn) {
-            return;
+        const sortTrigger = shadow.getElementById('ag-sort-trigger');
+        const sortMenu = shadow.getElementById('ag-sort-menu');
+        const field = getCurrentSortField();
+        const order = getCurrentSortOrder();
+        if (sortTrigger) {
+            const sortFieldLabels = { DEFAULT: '默认', NAME: '名称', SIZE: '大小' };
+            sortTrigger.textContent = sortFieldLabels[field] || '默认';
         }
-        orderBtn.style.display = 'inline-flex';
-        if (currentSortOrder === 'ASC') {
-            orderBtn.innerHTML = '<svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>';
-        } else {
-            orderBtn.innerHTML = '<svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>';
+        if (sortMenu) {
+            sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
+                el.classList.toggle('active', el.dataset.value === field);
+            });
+        }
+        if (orderBtn) {
+            orderBtn.style.display = 'inline-flex';
+            if (order === 'ASC') {
+                orderBtn.innerHTML = '<svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z"/></svg>';
+            } else {
+                orderBtn.innerHTML = '<svg style="width:14px;height:14px;fill:currentColor" viewBox="0 0 24 24"><path d="M20 12l-1.41-1.41L13 16.17V4h-2v12.17l-5.58-5.59L4 12l8 8 8-8z"/></svg>';
+            }
         }
     }
 
     /**
-     * 对过滤后的媒体列表执行指定的排序规则
+     * 对当前选项卡过滤后的媒体列表执行独立的排序规则
      * 
      * @param {Array<Object>} list 待排序的媒体列表
      * @returns {Array<Object>} 排序完成后的媒体列表
@@ -3124,18 +3247,20 @@
         if (!list || list.length <= 1) {
             return list;
         }
-        if (currentSortField === 'DEFAULT') {
-            return currentSortOrder === 'ASC' ? list : [...list].reverse();
+        const field = getCurrentSortField();
+        const order = getCurrentSortOrder();
+        if (field === 'DEFAULT') {
+            return order === 'ASC' ? list : [...list].reverse();
         }
         const sorted = [...list];
-        if (currentSortField === 'NAME') {
-            if (currentSortOrder === 'ASC') {
+        if (field === 'NAME') {
+            if (order === 'ASC') {
                 sorted.sort((a, b) => (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' }));
             } else {
                 sorted.sort((a, b) => (b.name || '').localeCompare(a.name || '', undefined, { numeric: true, sensitivity: 'base' }));
             }
-        } else if (currentSortField === 'SIZE') {
-            if (currentSortOrder === 'DESC') {
+        } else if (field === 'SIZE') {
+            if (order === 'DESC') {
                 sorted.sort((a, b) => (b.size || (b.width ? b.width * b.height : 0) || 0) - (a.size || (a.width ? a.width * a.height : 0) || 0));
             } else {
                 sorted.sort((a, b) => (a.size || (a.width ? a.width * a.height : 0) || 0) - (b.size || (b.width ? b.width * b.height : 0) || 0));
@@ -3363,6 +3488,7 @@
     /* 渲染当前选项卡下的媒体画廊或音频列表 */
     function renderGallery() {
         renderFormatFilters();
+        updateSortUI();
         const imgGallery = shadow.getElementById('ag-gallery-image');
         const audioGallery = shadow.getElementById('ag-gallery-audio');
         const videoGallery = shadow.getElementById('ag-gallery-video');
@@ -4835,20 +4961,16 @@
             item.addEventListener('click', (e) => {
                 e.stopPropagation();
                 const val = item.dataset.value;
-                currentSortField = val;
-                if (currentSortField === 'SIZE') {
-                    currentSortOrder = 'DESC';
+                tabSortState[currentTab].field = val;
+                if (val === 'SIZE') {
+                    tabSortState[currentTab].order = 'DESC';
                 } else {
-                    currentSortOrder = 'ASC';
+                    tabSortState[currentTab].order = 'ASC';
                 }
                 saveSortPreferences();
-                sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
-                    el.classList.toggle('active', el.dataset.value === val);
-                });
-                sortTrigger.textContent = item.textContent;
                 sortMenu.style.display = 'none';
                 sortGroup.classList.remove('open');
-                updateSortOrderButton();
+                updateSortUI();
                 renderGallery();
             });
         });
@@ -4865,27 +4987,15 @@
 
     if (sortOrderBtn) {
         sortOrderBtn.addEventListener('click', () => {
-            currentSortOrder = currentSortOrder === 'ASC' ? 'DESC' : 'ASC';
+            const currentOrder = getCurrentSortOrder();
+            tabSortState[currentTab].order = currentOrder === 'ASC' ? 'DESC' : 'ASC';
             saveSortPreferences();
-            updateSortOrderButton();
+            updateSortUI();
             renderGallery();
         });
     }
 
-    const sortFieldLabels = {
-        DEFAULT: '默认',
-        NAME: '名称',
-        SIZE: '大小'
-    };
-    if (sortTrigger && sortFieldLabels[currentSortField]) {
-        sortTrigger.textContent = sortFieldLabels[currentSortField];
-    }
-    if (sortMenu) {
-        sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
-            el.classList.toggle('active', el.dataset.value === currentSortField);
-        });
-    }
-    updateSortOrderButton();
+    updateSortUI();
 
     /**
      * 更新底部正在播放定位栏的状态与内容

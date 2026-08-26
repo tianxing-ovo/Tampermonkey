@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.0
+// @version      1.6.1
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -1843,6 +1843,17 @@
         .now-playing-bar.dragging {
             cursor: grabbing;
         }
+        @keyframes agMarqueeScroll {
+            0%, 15% {
+                transform: translateX(0);
+            }
+            75%, 85% {
+                transform: translateX(var(--marquee-distance, 0px));
+            }
+            100% {
+                transform: translateX(0);
+            }
+        }
         .now-playing-title {
             color: #f1f5f9;
             font-size: 13px;
@@ -1850,12 +1861,26 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
+            text-align: center;
             max-width: min(850px, calc(100vw - 460px));
             min-width: 0;
             flex: 1 1 auto;
             cursor: pointer;
             transition: color 0.15s;
             letter-spacing: 0.2px;
+            position: relative;
+        }
+        .now-playing-title-inner {
+            display: inline-block;
+            white-space: nowrap;
+            will-change: transform;
+        }
+        .now-playing-title.has-marquee {
+            text-overflow: clip;
+            text-align: left;
+        }
+        .now-playing-title.has-marquee .now-playing-title-inner {
+            animation: agMarqueeScroll var(--marquee-duration, 8s) ease-in-out infinite;
         }
         .now-playing-title:hover {
             color: #a5b4fc;
@@ -1957,7 +1982,14 @@
             padding: 3px;
             box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
             z-index: 90;
-            transition: opacity 0.2s, transform 0.2s;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            transition: opacity 0.2s, background 0.15s;
+        }
+        .scroll-nav-capsule.dragging {
+            cursor: grabbing;
+            user-select: none;
         }
         .btn-scroll-nav {
             background: transparent;
@@ -2596,31 +2628,56 @@
                 max-height: 200px;
             }
             .now-playing-bar {
-                bottom: calc(12px + env(safe-area-inset-bottom, 0px));
-                left: 10px;
-                right: 10px;
-                transform: none;
-                max-width: calc(100% - 20px);
-                padding: 6px 10px 6px 14px;
-                gap: 8px;
+                bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+                left: 10px !important;
+                right: 10px !important;
+                transform: none !important;
+                max-width: calc(100% - 20px) !important;
+                width: auto !important;
+                flex-direction: column !important;
+                align-items: stretch !important;
+                padding: 7px 10px 7px 12px;
+                gap: 6px;
+                border-radius: 16px;
+                cursor: default;
             }
             .now-playing-title {
-                font-size: 12px;
-                flex: 1;
-                min-width: 0;
-                max-width: none;
-                display: -webkit-box;
-                -webkit-line-clamp: 2;
-                -webkit-box-orient: vertical;
+                font-size: 12.5px;
+                font-weight: 600;
+                color: #f8fafc;
+                width: 100%;
+                max-width: 100%;
                 overflow: hidden;
                 text-overflow: ellipsis;
-                white-space: normal;
-                word-break: break-all;
+                white-space: nowrap;
                 line-height: 1.35;
+                text-align: center;
+                position: relative;
+            }
+            .now-playing-title.has-marquee {
+                text-overflow: clip;
+                text-align: left;
+            }
+            .now-playing-actions {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                width: 100%;
+                gap: 5px;
             }
             .btn-now-playing {
-                padding: 3px 8px;
+                flex: 1;
+                padding: 4px 0;
                 font-size: 11px;
+                text-align: center;
+                justify-content: center;
+                white-space: nowrap;
+                border-radius: 6px;
+            }
+            .btn-now-playing-close {
+                flex: 0 0 24px;
+                height: 24px;
+                font-size: 12px;
             }
             .scroll-nav-capsule {
                 bottom: calc(72px + env(safe-area-inset-bottom, 0px));
@@ -2720,7 +2777,7 @@
             <div class="video-list" id="ag-gallery-video" style="display:none"></div>
         </div>
         <div class="now-playing-bar" id="ag-now-playing-bar" style="display:none">
-            <div class="now-playing-title" id="ag-now-playing-title" title="点击定位"></div>
+            <div class="now-playing-title" id="ag-now-playing-title" title="点击定位"><span class="now-playing-title-inner" id="ag-now-playing-title-inner"></span></div>
             <div class="now-playing-actions">
                 <button type="button" class="btn-now-playing" id="ag-btn-prev-playing" title="播放上一个">上一个</button>
                 <button type="button" class="btn-now-playing btn-now-playing-pause" id="ag-btn-pause-playing">暂停</button>
@@ -5072,8 +5129,24 @@
         currentPlayingCard = card;
         currentPlayingType = type;
         card.classList.toggle('is-playing', isPlaying);
-        titleEl.textContent = item.name || '未知媒体';
-        titleEl.title = item.name || '';
+        const innerSpan = shadow.getElementById('ag-now-playing-title-inner') || titleEl;
+        innerSpan.textContent = item.name || '未知媒体';
+        titleEl.title = `${item.name || ''} (点击定位)`;
+        // 计算文本实际溢出尺寸并在确实超长截断时激活跑马灯
+        requestAnimationFrame(() => {
+            titleEl.classList.remove('has-marquee');
+            titleEl.style.removeProperty('--marquee-distance');
+            titleEl.style.removeProperty('--marquee-duration');
+            const innerWidth = innerSpan.getBoundingClientRect().width;
+            const containerWidth = titleEl.getBoundingClientRect().width;
+            const diff = innerWidth - containerWidth;
+            if (diff > 16) {
+                const duration = Math.max(6, Math.min(18, diff / 18 + 3));
+                titleEl.style.setProperty('--marquee-distance', `-${Math.ceil(diff) + 14}px`);
+                titleEl.style.setProperty('--marquee-duration', `${duration.toFixed(1)}s`);
+                titleEl.classList.add('has-marquee');
+            }
+        });
         if (toggleBtn) {
             toggleBtn.textContent = isPlaying ? '暂停' : '继续';
             toggleBtn.classList.toggle('btn-now-playing-resume', !isPlaying);
@@ -5387,6 +5460,19 @@
         if (!bar) {
             return;
         }
+        if (window.innerWidth <= 768) {
+            bar.style.transform = 'none';
+            bar.style.left = '10px';
+            bar.style.right = '10px';
+            bar.style.bottom = 'calc(12px + env(safe-area-inset-bottom, 0px))';
+            bar.style.width = 'auto';
+            return;
+        }
+        bar.style.right = 'auto';
+        bar.style.bottom = '24px';
+        bar.style.left = '50%';
+        bar.style.width = 'max-content';
+
         const barRect = bar.getBoundingClientRect();
         const modalWidth = modal ? modal.clientWidth : window.innerWidth;
         const modalHeight = modal ? modal.clientHeight : window.innerHeight;
@@ -5398,8 +5484,18 @@
         const minTy = -(modalHeight - 24 - 12 - barHeight);
         const maxTy = 24 - 12;
 
-        const clampedTx = Math.max(minTx, Math.min(tx, maxTx));
-        const clampedTy = Math.max(minTy, Math.min(ty, maxTy));
+        let clampedTx;
+        let clampedTy;
+        if (minTx <= maxTx) {
+            clampedTx = Math.max(minTx, Math.min(tx, maxTx));
+        } else {
+            clampedTx = 0;
+        }
+        if (minTy <= maxTy) {
+            clampedTy = Math.max(minTy, Math.min(ty, maxTy));
+        } else {
+            clampedTy = 0;
+        }
         barCurrentTx = clampedTx;
         barCurrentTy = clampedTy;
         bar.style.transform = `translate(calc(-50% + ${clampedTx}px), ${clampedTy}px)`;
@@ -5458,7 +5554,7 @@
 
     if (nowPlayingBar) {
         nowPlayingBar.addEventListener('pointerdown', (e) => {
-            if (e.target.closest('button, .btn-now-playing, .btn-now-playing-close')) {
+            if (window.innerWidth <= 768 || e.target.closest('button, .btn-now-playing, .btn-now-playing-close')) {
                 return;
             }
             isBarDragging = true;
@@ -5533,16 +5629,138 @@
         bottomBtn.style.display = isAtBottom ? 'none' : 'flex';
         divider.style.display = (!isAtTop && !isAtBottom) ? 'block' : 'none';
         capsule.style.display = (isAtTop && isAtBottom) ? 'none' : 'flex';
+        reClampScrollCapsule();
+    }
+
+    let isCapsuleDragging = false;
+    let hasCapsuleMoved = false;
+    let capsuleDragStartX = 0;
+    let capsuleDragStartY = 0;
+    let capsuleInitialLeft = 0;
+    let capsuleInitialTop = 0;
+
+    /**
+     * 校验并约束滚动导航胶囊在当前可视窗口内
+     * 
+     * @param {number} x 水平坐标
+     * @param {number} y 垂直坐标
+     * @returns {{x: number, y: number}} 约束后的位置坐标
+     */
+    function clampScrollCapsulePosition(x, y) {
+        const capsule = shadow.getElementById('ag-scroll-capsule');
+        const capsuleWidth = capsule?.offsetWidth || 38;
+        const capsuleHeight = capsule?.offsetHeight || 38;
+        const maxX = Math.max(0, window.innerWidth - capsuleWidth - 8);
+        const maxY = Math.max(0, window.innerHeight - capsuleHeight - 8);
+        return {
+            x: Math.max(8, Math.min(x, maxX)),
+            y: Math.max(8, Math.min(y, maxY))
+        };
+    }
+
+    /* 校验并重新约束滚动导航胶囊在当前可视窗口内 */
+    function reClampScrollCapsule() {
+        const capsule = shadow.getElementById('ag-scroll-capsule');
+        if (capsule && capsule.style.left && capsule.style.left !== 'auto') {
+            const currentLeft = parseFloat(capsule.style.left) || 0;
+            const currentTop = parseFloat(capsule.style.top) || 0;
+            const { x, y } = clampScrollCapsulePosition(currentLeft, currentTop);
+            capsule.style.left = `${x}px`;
+            capsule.style.top = `${y}px`;
+        }
+    }
+
+    const savedCapsulePos = (typeof GM_getValue === 'function') ? GM_getValue('ag_scroll_capsule_pos', null) : null;
+    const scrollCapsuleEl = shadow.getElementById('ag-scroll-capsule');
+    if (scrollCapsuleEl && savedCapsulePos?.x !== undefined && savedCapsulePos?.y !== undefined) {
+        const { x, y } = clampScrollCapsulePosition(savedCapsulePos.x, savedCapsulePos.y);
+        scrollCapsuleEl.style.left = `${x}px`;
+        scrollCapsuleEl.style.top = `${y}px`;
+        scrollCapsuleEl.style.right = 'auto';
+        scrollCapsuleEl.style.bottom = 'auto';
+    }
+
+    window.addEventListener('resize', reClampScrollCapsule);
+
+    /**
+     * 处理滚动导航胶囊全局指针拖拽位移
+     * 
+     * @param {PointerEvent} e 指针移动事件对象
+     */
+    function onCapsulePointerMove(e) {
+        if (!isCapsuleDragging) {
+            return;
+        }
+        const dx = e.clientX - capsuleDragStartX;
+        const dy = e.clientY - capsuleDragStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            hasCapsuleMoved = true;
+        }
+        const capsule = shadow.getElementById('ag-scroll-capsule');
+        if (capsule) {
+            const { x, y } = clampScrollCapsulePosition(capsuleInitialLeft + dx, capsuleInitialTop + dy);
+            capsule.style.left = `${x}px`;
+            capsule.style.top = `${y}px`;
+            capsule.style.right = 'auto';
+            capsule.style.bottom = 'auto';
+        }
+    }
+
+    /* 处理滚动导航胶囊拖拽释放并持久化保存位置坐标 */
+    function onCapsulePointerUp() {
+        if (!isCapsuleDragging) {
+            return;
+        }
+        isCapsuleDragging = false;
+        const capsule = shadow.getElementById('ag-scroll-capsule');
+        if (capsule) {
+            capsule.classList.remove('dragging');
+            if (hasCapsuleMoved) {
+                const rect = capsule.getBoundingClientRect();
+                if (typeof GM_setValue === 'function') {
+                    GM_setValue('ag_scroll_capsule_pos', { x: rect.left, y: rect.top });
+                }
+            }
+        }
+        window.removeEventListener('pointermove', onCapsulePointerMove);
+        window.removeEventListener('pointerup', onCapsulePointerUp);
+    }
+
+    if (scrollCapsuleEl) {
+        scrollCapsuleEl.addEventListener('pointerdown', (e) => {
+            isCapsuleDragging = true;
+            hasCapsuleMoved = false;
+            capsuleDragStartX = e.clientX;
+            capsuleDragStartY = e.clientY;
+            const rect = scrollCapsuleEl.getBoundingClientRect();
+            capsuleInitialLeft = rect.left;
+            capsuleInitialTop = rect.top;
+            scrollCapsuleEl.style.left = `${capsuleInitialLeft}px`;
+            scrollCapsuleEl.style.top = `${capsuleInitialTop}px`;
+            scrollCapsuleEl.style.right = 'auto';
+            scrollCapsuleEl.style.bottom = 'auto';
+            scrollCapsuleEl.classList.add('dragging');
+            window.addEventListener('pointermove', onCapsulePointerMove);
+            window.addEventListener('pointerup', onCapsulePointerUp);
+        });
     }
 
     if (scrollTopBtn && modalBody) {
-        scrollTopBtn.addEventListener('click', () => {
+        scrollTopBtn.addEventListener('click', (e) => {
+            if (hasCapsuleMoved) {
+                e.stopPropagation();
+                return;
+            }
             modalBody.scrollTop = 0;
             updateScrollNavState();
         });
     }
     if (scrollBottomBtn && modalBody) {
-        scrollBottomBtn.addEventListener('click', () => {
+        scrollBottomBtn.addEventListener('click', (e) => {
+            if (hasCapsuleMoved) {
+                e.stopPropagation();
+                return;
+            }
             modalBody.scrollTop = modalBody.scrollHeight;
             updateScrollNavState();
         });

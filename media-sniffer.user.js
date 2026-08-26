@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.5.2
+// @version      1.6.0
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -87,6 +87,16 @@
     let currentPlayingVideo = null;
     let currentPlayingCard = null;
     let currentPlayingType = null;
+    const PLAY_MODES = {
+        ORDER: 'ORDER',
+        LOOP: 'LOOP',
+        RANDOM: 'RANDOM'
+    };
+    let currentPlayMode = GM_getValue('ag_media_play_mode', PLAY_MODES.ORDER);
+    if (!PLAY_MODES[currentPlayMode]) {
+        currentPlayMode = PLAY_MODES.ORDER;
+    }
+    const playedRandomUrls = new Set();
     let activeDownloadXhr = null;
     let isDownloadCancelled = false;
     // 存储等待探测元数据的音频元素队列
@@ -749,12 +759,17 @@
         }, 800);
     }
 
-    // 拦截fetch请求以捕获网盘数据接口与视频流
+    // 拦截fetch请求以捕获网盘数据接口与音频及视频流
     const originalFetch = window.fetch;
     window.fetch = async function (...args) {
         const reqUrl = typeof args[0] === 'string' ? args[0] : (args[0]?.url || '');
-        if (typeof reqUrl === 'string' && VIDEO_EXT_REGEX.test(reqUrl)) {
-            registerVideo(reqUrl, 'FETCH');
+        if (typeof reqUrl === 'string') {
+            if (VIDEO_EXT_REGEX.test(reqUrl)) {
+                registerVideo(reqUrl, 'FETCH');
+            }
+            if (AUDIO_EXT_REGEX.test(reqUrl)) {
+                registerAudio(reqUrl, 'FETCH');
+            }
         }
         const response = await originalFetch.apply(this, args);
         if (/\/api\/fs\/(list|search|get)/.test(reqUrl)) {
@@ -765,12 +780,15 @@
         return response;
     };
 
-    // 拦截xhr请求以捕获网盘数据接口与视频流
+    // 拦截xhr请求以捕获网盘数据接口与音频及视频流
     const originalXhrOpen = XMLHttpRequest.prototype.open;
     XMLHttpRequest.prototype.open = function (method, url) {
         if (typeof url === 'string') {
             if (VIDEO_EXT_REGEX.test(url)) {
                 registerVideo(url, 'XHR');
+            }
+            if (AUDIO_EXT_REGEX.test(url)) {
+                registerAudio(url, 'XHR');
             }
             if (/\/api\/fs\/(list|search|get)/.test(url)) {
                 this.addEventListener('load', () => {
@@ -1115,11 +1133,11 @@
         if (!el) {
             return '';
         }
-        let rawTitle = el.getAttribute('alt') || el.getAttribute('title') || el.getAttribute('aria-label') || '';
+        let rawTitle = el.getAttribute('title') || el.getAttribute('alt') || el.getAttribute('aria-label') || '';
         if (!rawTitle && el.tagName.toLowerCase() === 'source' && el.parentElement) {
-            const siblingMedia = el.parentElement.querySelector('img, video');
+            const siblingMedia = el.parentElement.querySelector('img, video, audio');
             if (siblingMedia) {
-                rawTitle = siblingMedia.getAttribute('alt') || siblingMedia.getAttribute('title') || siblingMedia.getAttribute('aria-label') || '';
+                rawTitle = siblingMedia.getAttribute('title') || siblingMedia.getAttribute('alt') || siblingMedia.getAttribute('aria-label') || '';
             }
         }
         if (!rawTitle) {
@@ -1139,19 +1157,19 @@
         if (!rawTitle && !isAdElement) {
             const card = el.closest('article, .card, [class~="card"], [class~="post"], .post-list-item, .post-item, .video-card, .recommended-card, .item-in, .grid-item, .media-item, [class*="post-list"], [class*="video-item"]');
             if (card) {
-                const heading = card.querySelector('h1, h2, h3, h4, [role="heading"], .card-title, .post-title, .entry-title, .video-title, .title');
+                const heading = card.querySelector('h1, h2, h3, h4, [role="heading"], .card-title, .post-title, .entry-title, .video-title, .title, a[title]');
                 if (heading && !heading.contains(el)) {
-                    rawTitle = (heading.textContent || '').trim();
+                    rawTitle = heading.getAttribute('title') || heading.closest('a')?.getAttribute('title') || heading.getAttribute('aria-label') || (heading.textContent || '').trim();
                 }
             } else {
                 let current = el.parentElement;
                 let depth = 0;
                 const rootTags = new Set(['MAIN', 'BODY', 'HTML', 'HEADER', 'FOOTER', 'NAV', 'ASIDE']);
                 while (current && !rootTags.has(current.tagName) && depth < 4) {
-                    const heading = current.querySelector('h1, h2, h3, h4, [role="heading"], .card-title, .post-title, .entry-title, .video-title, .title');
+                    const heading = current.querySelector('h1, h2, h3, h4, [role="heading"], .card-title, .post-title, .entry-title, .video-title, .title, a[title]');
                     if (heading && !heading.contains(el)) {
-                        const text = (heading.textContent || '').trim();
-                        if (text && text.length >= 2 && text.length <= 120) {
+                        const text = heading.getAttribute('title') || heading.closest('a')?.getAttribute('title') || heading.getAttribute('aria-label') || (heading.textContent || '').trim();
+                        if (text && text.length >= 2 && text.length <= 160) {
                             rawTitle = text;
                             break;
                         }
@@ -1159,6 +1177,12 @@
                     current = current.parentElement;
                     depth++;
                 }
+            }
+        }
+        if (!rawTitle) {
+            const pageHeading = document.querySelector('h1, .entry-title, .post-title, .video-title');
+            if (pageHeading) {
+                rawTitle = pageHeading.getAttribute('title') || (pageHeading.textContent || '').trim();
             }
         }
         return sanitizeFileName(rawTitle);
@@ -1253,6 +1277,23 @@
         updateFloatingBadge();
     }
 
+    /* 深度扫描当前文档中的所有音频元素 */
+    function scanPageAudios() {
+        const audioElements = document.querySelectorAll('audio, audio source');
+        audioElements.forEach(el => {
+            let cleanName = extractElementTitle(el);
+            if (!cleanName) {
+                const pageTitle = (document.querySelector('h1, .entry-title, .post-title')?.textContent || '').trim();
+                cleanName = sanitizeFileName(pageTitle);
+            }
+            const src = el.getAttribute('src') || el.getAttribute('data-src') || el.getAttribute('data-url');
+            if (src && AUDIO_EXT_REGEX.test(src)) {
+                registerAudio(src, 'AUDIO-TAG', { name: cleanName });
+            }
+        });
+        updateFloatingBadge();
+    }
+
     /* 深度扫描当前文档中的所有视频元素 */
     function scanPageVideos() {
         const videoElements = document.querySelectorAll('video, video source');
@@ -1273,6 +1314,7 @@
     /* 扫描页面全部媒体元素 */
     function scanAllPageMedia() {
         scanPageImages();
+        scanPageAudios();
         scanPageVideos();
     }
 
@@ -1779,7 +1821,7 @@
             position: absolute;
             bottom: 24px;
             left: 50%;
-            transform: translateX(-50%);
+            transform: translate(calc(-50% + var(--ag-bar-tx, 0px)), var(--ag-bar-ty, 0px));
             background: rgba(15, 23, 42, 0.9);
             backdrop-filter: blur(20px);
             -webkit-backdrop-filter: blur(20px);
@@ -1788,21 +1830,18 @@
             padding: 7px 12px 7px 22px;
             display: flex;
             align-items: center;
-            gap: 16px;
+            gap: 14px;
             box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32), 0 0 0 1px rgba(255, 255, 255, 0.06);
             z-index: 100;
-            max-width: 80%;
-            animation: agFadeInUp 0.25s ease-out;
+            max-width: calc(100% - 32px);
+            width: max-content;
+            cursor: grab;
+            touch-action: none;
+            user-select: none;
+            will-change: transform;
         }
-        @keyframes agFadeInUp {
-            from {
-                opacity: 0;
-                transform: translate(-50%, 15px);
-            }
-            to {
-                opacity: 1;
-                transform: translate(-50%, 0);
-            }
+        .now-playing-bar.dragging {
+            cursor: grabbing;
         }
         .now-playing-title {
             color: #f1f5f9;
@@ -1811,7 +1850,9 @@
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
-            max-width: 360px;
+            max-width: min(850px, calc(100vw - 460px));
+            min-width: 0;
+            flex: 1 1 auto;
             cursor: pointer;
             transition: color 0.15s;
             letter-spacing: 0.2px;
@@ -2681,8 +2722,11 @@
         <div class="now-playing-bar" id="ag-now-playing-bar" style="display:none">
             <div class="now-playing-title" id="ag-now-playing-title" title="点击定位"></div>
             <div class="now-playing-actions">
-                <button type="button" class="btn-now-playing" id="ag-btn-locate-playing">定位</button>
+                <button type="button" class="btn-now-playing" id="ag-btn-prev-playing" title="播放上一个">上一个</button>
                 <button type="button" class="btn-now-playing btn-now-playing-pause" id="ag-btn-pause-playing">暂停</button>
+                <button type="button" class="btn-now-playing" id="ag-btn-next-playing" title="播放下一个">下一个</button>
+                <button type="button" class="btn-now-playing" id="ag-btn-play-mode" title="切换播放模式">顺序</button>
+                <button type="button" class="btn-now-playing" id="ag-btn-locate-playing">定位</button>
                 <button type="button" class="btn-now-playing-close" id="ag-btn-close-playing" title="关闭">✕</button>
             </div>
         </div>
@@ -3661,7 +3705,7 @@
                         });
                         audioPlayer.addEventListener('ended', () => {
                             if (currentPlayingAudio === audioPlayer) {
-                                updateNowPlayingBar(null, null, null, false);
+                                handleMediaEnded(card, 'AUDIO');
                             }
                         });
                         metadataQueue.push(audioPlayer);
@@ -3777,7 +3821,7 @@
                         });
                         videoPlayer.addEventListener('ended', () => {
                             if (currentPlayingVideo === videoPlayer) {
-                                updateNowPlayingBar(null, null, null, false);
+                                handleMediaEnded(card, 'VIDEO');
                             }
                         });
                     }
@@ -5009,6 +5053,7 @@
         const bar = shadow.getElementById('ag-now-playing-bar');
         const titleEl = shadow.getElementById('ag-now-playing-title');
         const toggleBtn = shadow.getElementById('ag-btn-pause-playing');
+        const modeBtn = shadow.getElementById('ag-btn-play-mode');
         if (!bar || !titleEl) {
             return;
         }
@@ -5033,7 +5078,248 @@
             toggleBtn.textContent = isPlaying ? '暂停' : '继续';
             toggleBtn.classList.toggle('btn-now-playing-resume', !isPlaying);
         }
-        bar.style.display = 'flex';
+        if (modeBtn) {
+            const meta = getPlayModeMeta(currentPlayMode);
+            modeBtn.textContent = meta.label;
+            modeBtn.title = meta.title;
+        }
+        if (bar.style.display === 'none') {
+            applyNowPlayingBarTransform(barCurrentTx, barCurrentTy);
+            bar.style.display = 'flex';
+        }
+    }
+
+    /**
+     * 获取播放模式的中文文本与提示文案
+     * 
+     * @param {string} mode 播放模式枚举
+     * @returns {Object} 包含简写文本与完整提示的对象
+     */
+    function getPlayModeMeta(mode) {
+        if (mode === PLAY_MODES.LOOP) {
+            return { label: '循环', title: '循环播放', toast: '已切换至循环播放' };
+        }
+        if (mode === PLAY_MODES.RANDOM) {
+            return { label: '随机', title: '随机播放', toast: '已切换至随机播放' };
+        }
+        return { label: '顺序', title: '顺序播放', toast: '已切换至顺序播放' };
+    }
+
+    /**
+     * 循环切换当前播放模式并持久化
+     */
+    function togglePlayMode() {
+        playedRandomUrls.clear();
+        if (currentPlayMode === PLAY_MODES.ORDER) {
+            currentPlayMode = PLAY_MODES.LOOP;
+        } else if (currentPlayMode === PLAY_MODES.LOOP) {
+            currentPlayMode = PLAY_MODES.RANDOM;
+        } else {
+            currentPlayMode = PLAY_MODES.ORDER;
+        }
+        GM_setValue('ag_media_play_mode', currentPlayMode);
+        const meta = getPlayModeMeta(currentPlayMode);
+        const modeBtn = shadow.getElementById('ag-btn-play-mode');
+        if (modeBtn) {
+            modeBtn.textContent = meta.label;
+            modeBtn.title = meta.title;
+        }
+        showToast(meta.toast);
+    }
+
+    /**
+     * 激活并播放指定卡片的媒体资源
+     * 
+     * @param {HTMLElement} card 目标媒体卡片节点
+     * @param {string} type 媒体类型
+     */
+    function playCardMedia(card, type) {
+        if (!card) {
+            return;
+        }
+        const isAudio = type === 'AUDIO';
+        const url = card.dataset.url;
+        const item = isAudio ? audioStore.get(url) : videoStore.get(url);
+        if (!item) {
+            return;
+        }
+        if (currentTab !== type) {
+            switchTab(type);
+        }
+        if (isAudio) {
+            stopCurrentVideo();
+            const audioPlayer = card.querySelector('audio');
+            if (audioPlayer) {
+                if (currentPlayingAudio && currentPlayingAudio !== audioPlayer) {
+                    currentPlayingAudio.pause();
+                }
+                currentPlayingAudio = audioPlayer;
+                if (audioPlayer.preload !== 'auto') {
+                    audioPlayer.preload = 'auto';
+                }
+                audioPlayer.play().catch(() => {});
+                updateNowPlayingBar(item, card, 'AUDIO', true);
+            }
+        } else {
+            stopCurrentAudio();
+            const videoPlayer = card.querySelector('video');
+            if (videoPlayer) {
+                if (currentPlayingVideo && currentPlayingVideo !== videoPlayer) {
+                    currentPlayingVideo.pause();
+                }
+                if (!card['_hls']) {
+                    setupVideoPlayerSource(card, videoPlayer, item, true);
+                }
+                currentPlayingVideo = videoPlayer;
+                videoPlayer.play().catch(() => {});
+                updateNowPlayingBar(item, card, 'VIDEO', true);
+            }
+        }
+        card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        updateScrollNavState();
+        card.classList.remove('locate-pulse');
+        void card.offsetWidth;
+        card.classList.add('locate-pulse');
+        setTimeout(() => {
+            if (card) {
+                card.classList.remove('locate-pulse');
+            }
+        }, 1500);
+    }
+
+    /**
+     * 媒体播放结束时的自动切歌调度器
+     * 
+     * @param {HTMLElement} card 当前结束的媒体卡片
+     * @param {string} type 媒体类型
+     */
+    function handleMediaEnded(card, type) {
+        if (currentPlayMode === PLAY_MODES.LOOP) {
+            const mediaEl = card.querySelector(type === 'AUDIO' ? 'audio' : 'video');
+            if (mediaEl) {
+                mediaEl.currentTime = 0;
+                mediaEl.play().catch(() => {});
+            }
+            return;
+        }
+        const gallery = shadow.getElementById(type === 'AUDIO' ? 'ag-gallery-audio' : 'ag-gallery-video');
+        if (!gallery) {
+            updateNowPlayingBar(null, null, null, false);
+            return;
+        }
+        const cards = Array.from(gallery.querySelectorAll(type === 'AUDIO' ? '.audio-card' : '.video-card'))
+            .filter(c => c.style.display !== 'none');
+        if (cards.length === 0) {
+            updateNowPlayingBar(null, null, null, false);
+            return;
+        }
+        const currentIndex = cards.indexOf(card);
+        let targetCard = null;
+        if (currentPlayMode === PLAY_MODES.RANDOM) {
+            playedRandomUrls.add(card.dataset.url);
+            let unplayedCards = cards.filter(c => !playedRandomUrls.has(c.dataset.url));
+            if (unplayedCards.length === 0) {
+                playedRandomUrls.clear();
+                unplayedCards = cards.filter(c => c !== card);
+                if (unplayedCards.length === 0) {
+                    unplayedCards = cards;
+                }
+            }
+            targetCard = unplayedCards[Math.floor(Math.random() * unplayedCards.length)];
+            if (targetCard) {
+                playedRandomUrls.add(targetCard.dataset.url);
+            }
+        } else {
+            const nextIndex = (currentIndex + 1) % cards.length;
+            targetCard = cards[nextIndex];
+        }
+        if (targetCard) {
+            playCardMedia(targetCard, type);
+        } else {
+            updateNowPlayingBar(null, null, null, false);
+        }
+    }
+
+    /**
+     * 手动切换播放下一个媒体
+     */
+    function playNextMedia() {
+        if (!currentPlayingCard || !currentPlayingType) {
+            return;
+        }
+        const gallery = shadow.getElementById(currentPlayingType === 'AUDIO' ? 'ag-gallery-audio' : 'ag-gallery-video');
+        if (!gallery) {
+            return;
+        }
+        const cards = Array.from(gallery.querySelectorAll(currentPlayingType === 'AUDIO' ? '.audio-card' : '.video-card'))
+            .filter(c => c.style.display !== 'none');
+        if (cards.length === 0) {
+            return;
+        }
+        const currentIndex = cards.indexOf(currentPlayingCard);
+        let targetCard = null;
+        if (currentPlayMode === PLAY_MODES.RANDOM) {
+            playedRandomUrls.add(currentPlayingCard.dataset.url);
+            let unplayedCards = cards.filter(c => !playedRandomUrls.has(c.dataset.url));
+            if (unplayedCards.length === 0) {
+                playedRandomUrls.clear();
+                unplayedCards = cards.filter(c => c !== currentPlayingCard);
+                if (unplayedCards.length === 0) {
+                    unplayedCards = cards;
+                }
+            }
+            targetCard = unplayedCards[Math.floor(Math.random() * unplayedCards.length)];
+            if (targetCard) {
+                playedRandomUrls.add(targetCard.dataset.url);
+            }
+        } else {
+            const nextIndex = (currentIndex + 1) % cards.length;
+            targetCard = cards[nextIndex];
+        }
+        if (targetCard) {
+            playCardMedia(targetCard, currentPlayingType);
+        }
+    }
+
+    /**
+     * 手动切换播放上一个媒体
+     */
+    function playPrevMedia() {
+        if (!currentPlayingCard || !currentPlayingType) {
+            return;
+        }
+        const gallery = shadow.getElementById(currentPlayingType === 'AUDIO' ? 'ag-gallery-audio' : 'ag-gallery-video');
+        if (!gallery) {
+            return;
+        }
+        const cards = Array.from(gallery.querySelectorAll(currentPlayingType === 'AUDIO' ? '.audio-card' : '.video-card'))
+            .filter(c => c.style.display !== 'none');
+        if (cards.length === 0) {
+            return;
+        }
+        const currentIndex = cards.indexOf(currentPlayingCard);
+        let targetCard = null;
+        if (currentPlayMode === PLAY_MODES.RANDOM) {
+            playedRandomUrls.add(currentPlayingCard.dataset.url);
+            let unplayedCards = cards.filter(c => !playedRandomUrls.has(c.dataset.url));
+            if (unplayedCards.length === 0) {
+                playedRandomUrls.clear();
+                unplayedCards = cards.filter(c => c !== currentPlayingCard);
+                if (unplayedCards.length === 0) {
+                    unplayedCards = cards;
+                }
+            }
+            targetCard = unplayedCards[Math.floor(Math.random() * unplayedCards.length)];
+            if (targetCard) {
+                playedRandomUrls.add(targetCard.dataset.url);
+            }
+        } else {
+            const prevIndex = (currentIndex - 1 + cards.length) % cards.length;
+            targetCard = cards[prevIndex];
+        }
+        if (targetCard) {
+            playCardMedia(targetCard, currentPlayingType);
+        }
     }
 
     /**
@@ -5080,19 +5366,132 @@
         }
     }
 
+    let isBarDragging = false;
+    let hasBarMoved = false;
+    let barDragStartX = 0;
+    let barDragStartY = 0;
+    let barCurrentTx = (typeof GM_getValue === 'function') ? (parseFloat(GM_getValue('ag_now_playing_tx', 0)) || 0) : 0;
+    let barCurrentTy = (typeof GM_getValue === 'function') ? (parseFloat(GM_getValue('ag_now_playing_ty', 0)) || 0) : 0;
+    let barStartTx = 0;
+    let barStartTy = 0;
+
+    /**
+     * 应用并约束正在播放条的位移变换
+     * 
+     * @param {number} tx 水平偏移量
+     * @param {number} ty 垂直偏移量
+     */
+    function applyNowPlayingBarTransform(tx, ty) {
+        const bar = shadow.getElementById('ag-now-playing-bar');
+        const modal = shadow.querySelector('.modal-overlay');
+        if (!bar) {
+            return;
+        }
+        const barRect = bar.getBoundingClientRect();
+        const modalWidth = modal ? modal.clientWidth : window.innerWidth;
+        const modalHeight = modal ? modal.clientHeight : window.innerHeight;
+        const halfWidth = (barRect.width || 400) / 2;
+        const barHeight = barRect.height || 42;
+
+        const minTx = 12 + halfWidth - modalWidth / 2;
+        const maxTx = modalWidth / 2 - halfWidth - 12;
+        const minTy = -(modalHeight - 24 - 12 - barHeight);
+        const maxTy = 24 - 12;
+
+        const clampedTx = Math.max(minTx, Math.min(tx, maxTx));
+        const clampedTy = Math.max(minTy, Math.min(ty, maxTy));
+        barCurrentTx = clampedTx;
+        barCurrentTy = clampedTy;
+        bar.style.transform = `translate(calc(-50% + ${clampedTx}px), ${clampedTy}px)`;
+    }
+
+    window.addEventListener('resize', () => {
+        applyNowPlayingBarTransform(barCurrentTx, barCurrentTy);
+    });
+
+    /**
+     * 处理正在播放条全局指针拖拽位移
+     * 
+     * @param {PointerEvent} e 指针移动事件对象
+     */
+    function onBarPointerMove(e) {
+        if (!isBarDragging) {
+            return;
+        }
+        const dx = e.clientX - barDragStartX;
+        const dy = e.clientY - barDragStartY;
+        if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+            hasBarMoved = true;
+        }
+        applyNowPlayingBarTransform(barStartTx + dx, barStartTy + dy);
+    }
+
+    /* 处理正在播放条拖拽释放并持久化保存位置坐标 */
+    function onBarPointerUp() {
+        if (!isBarDragging) {
+            return;
+        }
+        isBarDragging = false;
+        const bar = shadow.getElementById('ag-now-playing-bar');
+        if (bar) {
+            bar.classList.remove('dragging');
+            if (hasBarMoved && typeof GM_setValue === 'function') {
+                GM_setValue('ag_now_playing_tx', barCurrentTx);
+                GM_setValue('ag_now_playing_ty', barCurrentTy);
+            }
+        }
+        window.removeEventListener('pointermove', onBarPointerMove);
+        window.removeEventListener('pointerup', onBarPointerUp);
+    }
+
+    const prevPlayingBtn = shadow.getElementById('ag-btn-prev-playing');
+    const nextPlayingBtn = shadow.getElementById('ag-btn-next-playing');
+    const modePlayingBtn = shadow.getElementById('ag-btn-play-mode');
     const locatePlayingBtn = shadow.getElementById('ag-btn-locate-playing');
     const locatePlayingTitle = shadow.getElementById('ag-now-playing-title');
     const pausePlayingBtn = shadow.getElementById('ag-btn-pause-playing');
     const closePlayingBtn = shadow.getElementById('ag-btn-close-playing');
+    const nowPlayingBar = shadow.getElementById('ag-now-playing-bar');
     const scrollTopBtn = shadow.getElementById('ag-btn-scroll-top');
     const scrollBottomBtn = shadow.getElementById('ag-btn-scroll-bottom');
     const modalBody = shadow.querySelector('.modal-body');
 
+    if (nowPlayingBar) {
+        nowPlayingBar.addEventListener('pointerdown', (e) => {
+            if (e.target.closest('button, .btn-now-playing, .btn-now-playing-close')) {
+                return;
+            }
+            isBarDragging = true;
+            hasBarMoved = false;
+            barDragStartX = e.clientX;
+            barDragStartY = e.clientY;
+            barStartTx = barCurrentTx;
+            barStartTy = barCurrentTy;
+            nowPlayingBar.classList.add('dragging');
+            window.addEventListener('pointermove', onBarPointerMove);
+            window.addEventListener('pointerup', onBarPointerUp);
+        });
+    }
+
+    if (prevPlayingBtn) {
+        prevPlayingBtn.addEventListener('click', playPrevMedia);
+    }
+    if (nextPlayingBtn) {
+        nextPlayingBtn.addEventListener('click', playNextMedia);
+    }
+    if (modePlayingBtn) {
+        modePlayingBtn.addEventListener('click', togglePlayMode);
+    }
     if (locatePlayingBtn) {
         locatePlayingBtn.addEventListener('click', locateCurrentPlaying);
     }
     if (locatePlayingTitle) {
-        locatePlayingTitle.addEventListener('click', locateCurrentPlaying);
+        locatePlayingTitle.addEventListener('click', () => {
+            if (hasBarMoved) {
+                return;
+            }
+            locateCurrentPlaying();
+        });
     }
     if (pausePlayingBtn) {
         pausePlayingBtn.addEventListener('click', togglePlayPauseCurrent);

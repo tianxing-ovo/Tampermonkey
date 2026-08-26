@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.1
+// @version      1.6.2
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -223,6 +223,19 @@
         }
         if (/^(?:data|blob):/i.test(url)) {
             return url;
+        }
+        // 修复路径中未转义的特殊字符导致签名参数被吞入哈希锚点
+        if (url.includes('#') && (url.includes('?sign=') || /\.(mp3|m4a|wav|flac|aac|ogg|opus|mp4|webm|mkv|m3u8|jpe?g|png|webp|gif)/i.test(url))) {
+            const queryIndex = url.indexOf('?');
+            const hashIndex = url.indexOf('#');
+            if (hashIndex !== -1 && (queryIndex === -1 || hashIndex < queryIndex)) {
+                if (queryIndex !== -1) {
+                    const pathPart = url.slice(0, queryIndex).replace(/#/g, '%23');
+                    url = `${pathPart}${url.slice(queryIndex)}`;
+                } else {
+                    url = url.replace(/#/g, '%23');
+                }
+            }
         }
         try {
             return new URL(url, window.location.href).href;
@@ -654,8 +667,9 @@
                 fullPath = item.path;
             }
         }
-        const directUrl = `${window.location.origin}/d${encodeURI(fullPath)}`;
-        return `${directUrl}?sign=${item.sign}`;
+        const encodedPath = fullPath.split('/').map(seg => encodeURIComponent(seg)).join('/');
+        const directUrl = `${window.location.origin}/d${encodedPath.startsWith('/') ? '' : '/'}${encodedPath}`;
+        return item.sign ? `${directUrl}?sign=${item.sign}` : directUrl;
     }
 
     /**
@@ -699,7 +713,6 @@
                 : decodeURIComponent(window.location.pathname);
             const currentAuthorBase = getAListAuthorBasePath(currentPath);
             const prevAuthorBase = getAListAuthorBasePath(lastAListPath);
-
             // 当切换到不同作者或离开作者目录回到分类根目录时才清空历史数据
             if (lastAListPath !== '' && currentAuthorBase !== prevAuthorBase) {
                 isImagesManuallyCleared = false;
@@ -5472,18 +5485,15 @@
         bar.style.bottom = '24px';
         bar.style.left = '50%';
         bar.style.width = 'max-content';
-
         const barRect = bar.getBoundingClientRect();
         const modalWidth = modal ? modal.clientWidth : window.innerWidth;
         const modalHeight = modal ? modal.clientHeight : window.innerHeight;
         const halfWidth = (barRect.width || 400) / 2;
         const barHeight = barRect.height || 42;
-
         const minTx = 12 + halfWidth - modalWidth / 2;
         const maxTx = modalWidth / 2 - halfWidth - 12;
         const minTy = -(modalHeight - 24 - 12 - barHeight);
         const maxTy = 24 - 12;
-
         let clampedTx;
         let clampedTy;
         if (minTx <= maxTx) {
@@ -5624,7 +5634,6 @@
         }
         const isAtTop = scrollTop <= 20;
         const isAtBottom = scrollTop >= maxScroll - 20;
-
         topBtn.style.display = isAtTop ? 'none' : 'flex';
         bottomBtn.style.display = isAtBottom ? 'none' : 'flex';
         divider.style.display = (!isAtTop && !isAtBottom) ? 'block' : 'none';

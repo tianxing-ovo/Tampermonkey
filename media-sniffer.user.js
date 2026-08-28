@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.5
+// @version      1.6.6
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -2299,6 +2299,67 @@
             text-transform: uppercase;
             box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         }
+        .card-open-tab-btn {
+            position: absolute;
+            top: 8px;
+            right: 48px;
+            width: 24px;
+            height: 24px;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.92);
+            border: 1px solid #cbd5e1;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+            z-index: 6;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.15s ease, transform 0.15s ease, color 0.15s ease, background 0.15s ease;
+        }
+        .card-open-tab-btn svg {
+            width: 14px;
+            height: 14px;
+            fill: currentColor;
+        }
+        .card-open-tab-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #ffffff;
+            transform: scale(1.12);
+        }
+        .img-card:hover .card-open-tab-btn {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        .media-row-open-btn {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            color: var(--text-muted);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            flex-shrink: 0;
+            transition: all 0.15s ease;
+            outline: none;
+        }
+        .media-row-open-btn svg {
+            width: 16px;
+            height: 16px;
+            fill: currentColor;
+        }
+        .media-row-open-btn:hover {
+            background: var(--primary);
+            border-color: var(--primary);
+            color: #ffffff;
+            transform: scale(1.08);
+        }
         .audio-format-badge {
             background: #e0f2fe;
             color: #0284c7;
@@ -3692,6 +3753,9 @@
                         <div class="img-select-overlay">
                             <svg class="img-select-check" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
                         </div>
+                        <button type="button" class="card-open-tab-btn">
+                            <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.OPEN_IN_NEW}"/></svg>
+                        </button>
                         <span class="media-format-badge">${item.format}</span>
                     </div>
                     <div class="img-meta">
@@ -3704,6 +3768,7 @@
                 const imgEl = card.querySelector('.img-thumb');
                 const dimSpan = card.querySelector('.img-dim');
                 const selectOverlay = card.querySelector('.img-select-overlay');
+                const openTabBtn = card.querySelector('.card-open-tab-btn');
 
                 /* 缩略图加载完成计算尺寸并更新显示 */
                 function onThumbLoad() {
@@ -3745,6 +3810,12 @@
                     card.classList.toggle('selected', !isSelected);
                     updateModalHeaderCounters();
                 });
+                if (openTabBtn) {
+                    openTabBtn.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        openInNewTab(item.hdUrl || item.url);
+                    });
+                }
                 const nameEl = card.querySelector('.img-name');
                 if (nameEl) {
                     nameEl.addEventListener('click', (e) => {
@@ -3808,6 +3879,9 @@
                             <div class="audio-player-wrapper">
                                 <audio controls preload="none" src="${item.url}"></audio>
                             </div>
+                            <button type="button" class="media-row-open-btn">
+                                <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.OPEN_IN_NEW}"/></svg>
+                            </button>
                         </div>
                     `;
                     const audioNameEl = card.querySelector('.audio-name');
@@ -3822,6 +3896,13 @@
                         audioAuthorEl.addEventListener('click', (e) => {
                             e.stopPropagation();
                             copyToClipboard(item.author, '已复制作者名字');
+                        });
+                    }
+                    const audioOpenTabBtn = card.querySelector('.media-row-open-btn');
+                    if (audioOpenTabBtn) {
+                        audioOpenTabBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openInNewTab(item.url);
                         });
                     }
                     const audioPlayer = card.querySelector('audio');
@@ -3919,6 +4000,9 @@
                             <div class="video-player-wrapper">
                                 <video controls playsinline preload="metadata"></video>
                             </div>
+                            <button type="button" class="media-row-open-btn">
+                                <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.OPEN_IN_NEW}"/></svg>
+                            </button>
                         </div>
                     `;
                     const videoNameEl = card.querySelector('.audio-name');
@@ -3933,6 +4017,13 @@
                         videoAuthorEl.addEventListener('click', (e) => {
                             e.stopPropagation();
                             copyToClipboard(item.author, '已复制作者名字');
+                        });
+                    }
+                    const videoOpenTabBtn = card.querySelector('.media-row-open-btn');
+                    if (videoOpenTabBtn) {
+                        videoOpenTabBtn.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            openInNewTab(item.url);
                         });
                     }
                     const wrapper = card.querySelector('.video-player-wrapper');

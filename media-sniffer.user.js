@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.3
+// @version      1.6.4
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -2786,6 +2786,7 @@
                         <div class="sort-menu-item active" data-value="DEFAULT">默认</div>
                         <div class="sort-menu-item" data-value="NAME">名称</div>
                         <div class="sort-menu-item" data-value="SIZE">大小</div>
+                        <div class="sort-menu-item" data-value="AUTHOR">作者</div>
                     </div>
                 </div>
             </div>
@@ -3339,12 +3340,15 @@
         const field = getCurrentSortField();
         const order = getCurrentSortOrder();
         if (sortTrigger) {
-            const sortFieldLabels = { DEFAULT: '默认', NAME: '名称', SIZE: '大小' };
+            const sortFieldLabels = { DEFAULT: '默认', NAME: '名称', SIZE: '大小', AUTHOR: '作者' };
             sortTrigger.textContent = sortFieldLabels[field] || '默认';
         }
         if (sortMenu) {
             sortMenu.querySelectorAll('.sort-menu-item').forEach(el => {
                 el.classList.toggle('active', el.dataset.value === field);
+                if (el.dataset.value === 'AUTHOR') {
+                    el.style.display = currentTab === 'IMAGE' ? 'none' : 'block';
+                }
             });
         }
         if (orderBtn) {
@@ -3385,6 +3389,24 @@
             } else {
                 sorted.sort((a, b) => (a.size || (a.width ? a.width * a.height : 0) || 0) - (b.size || (b.width ? b.width * b.height : 0) || 0));
             }
+        } else if (field === 'AUTHOR') {
+            sorted.sort((a, b) => {
+                const authorA = a.author || '';
+                const authorB = b.author || '';
+                if (!authorA && authorB) {
+                    return 1;
+                }
+                if (authorA && !authorB) {
+                    return -1;
+                }
+                const cmp = order === 'ASC'
+                    ? authorA.localeCompare(authorB, undefined, { numeric: true, sensitivity: 'base' })
+                    : authorB.localeCompare(authorA, undefined, { numeric: true, sensitivity: 'base' });
+                if (cmp !== 0) {
+                    return cmp;
+                }
+                return (a.name || '').localeCompare(b.name || '', undefined, { numeric: true, sensitivity: 'base' });
+            });
         }
         return sorted;
     }

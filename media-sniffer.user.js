@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.2
+// @version      1.6.3
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -2337,6 +2337,12 @@
             overflow: hidden;
             text-overflow: ellipsis;
             white-space: nowrap;
+            cursor: pointer;
+            transition: color 0.15s ease;
+        }
+        .audio-author-name:hover {
+            color: var(--primary);
+            text-decoration: underline;
         }
         /* 卡片底部信息条 */
         .img-meta {
@@ -3630,7 +3636,7 @@
                         <span class="media-format-badge">${item.format}</span>
                     </div>
                     <div class="img-meta">
-                        <div class="img-name" title="${displayName}">${displayName}</div>
+                        <div class="img-name">${displayName}</div>
                         <div class="img-dim-row">
                             <span class="img-dim">${dimText}</span>
                         </div>
@@ -3727,7 +3733,7 @@
                                 <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.MUSIC}"/></svg>
                             </div>
                             <div class="audio-info">
-                                <div class="audio-name" title="${item.name}">${item.name}</div>
+                                <div class="audio-name">${item.name}</div>
                                 <div class="audio-meta-row">
                                     <span class="audio-format-badge">${item.format}</span>
                                     ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
@@ -3746,6 +3752,13 @@
                         audioNameEl.addEventListener('click', (e) => {
                             e.stopPropagation();
                             copyToClipboard(item.name, '已复制文件名');
+                        });
+                    }
+                    const audioAuthorEl = card.querySelector('.audio-author-name');
+                    if (audioAuthorEl) {
+                        audioAuthorEl.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            copyToClipboard(item.author, '已复制作者名字');
                         });
                     }
                     const audioPlayer = card.querySelector('audio');
@@ -3831,7 +3844,7 @@
                                 <svg viewBox="0 0 24 24"><path d="${SVG_PATHS.VIDEO}"/></svg>
                             </div>
                             <div class="audio-info">
-                                <div class="audio-name" title="${item.name}">${item.name}</div>
+                                <div class="audio-name">${item.name}</div>
                                 <div class="audio-meta-row">
                                     <span class="video-format-badge">${item.format}</span>
                                     ${item.author ? `<span class="audio-author-name">${item.author}</span>` : ''}
@@ -3850,6 +3863,13 @@
                         videoNameEl.addEventListener('click', (e) => {
                             e.stopPropagation();
                             copyToClipboard(item.name, '已复制文件名');
+                        });
+                    }
+                    const videoAuthorEl = card.querySelector('.audio-author-name');
+                    if (videoAuthorEl) {
+                        videoAuthorEl.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            copyToClipboard(item.author, '已复制作者名字');
                         });
                     }
                     const wrapper = card.querySelector('.video-player-wrapper');

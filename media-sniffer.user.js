@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.4
+// @version      1.6.5
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -13,6 +13,7 @@
 // @grant        GM_setClipboard
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_openInTab
 // @connect      *
 // @license      Apache-2.0
 // @homepageURL  https://github.com/tianxing-ovo/Tampermonkey
@@ -21,7 +22,7 @@
 // @downloadURL  https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer.user.js
 // ==/UserScript==
 
-/* global GM_download, GM_xmlhttpRequest, GM_setClipboard, GM_getValue, GM_setValue, Hls */
+/* global GM_download, GM_xmlhttpRequest, GM_setClipboard, GM_getValue, GM_setValue, GM_openInTab, Hls */
 
 (function () {
     'use strict';
@@ -117,7 +118,8 @@
         MUSIC: 'M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z',
         VIDEO: 'M17 10.5V7c0-.55-.45-1-1-1H4c-.55 0-1 .45-1 1v10c0 .55.45 1 1 1h12c.55 0 1-.45 1-1v-3.5l4 4v-11l-4 4z',
         PREV: 'M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z',
-        NEXT: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z'
+        NEXT: 'M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z',
+        OPEN_IN_NEW: 'M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z'
     };
 
     /* 停止当前正在播放的音频实例 */
@@ -2795,6 +2797,7 @@
                 <button class="btn" id="ag-btn-clear">清空</button>
                 <button class="btn" id="ag-btn-toggle-select">全选</button>
                 <button class="btn" id="ag-btn-copy-links">复制链接</button>
+                <button class="btn" id="ag-btn-open-tabs">在新标签页打开</button>
                 <button class="btn btn-primary btn-download-selected" id="ag-btn-download-selected">下载</button>
                 <button class="btn btn-primary" id="ag-btn-download-zip">下载并打包</button>
                 <button class="btn-close" id="ag-btn-close">
@@ -4614,6 +4617,39 @@
         performSafeAnchorClick(blobUrl, fileName);
     }
 
+    /**
+     * 安全在新标签页中打开媒体链接并阻断防盗链与事件冒泡
+     * 
+     * @param {string} url 目标资源网络链接
+     */
+    function openInNewTab(url) {
+        if (!url) {
+            return;
+        }
+        if (typeof GM_openInTab === 'function') {
+            try {
+                GM_openInTab(url, { active: false, insert: true, setParent: true });
+                return;
+            } catch { }
+        }
+        const link = document.createElement('a');
+        link.href = url;
+        link.target = '_blank';
+        link.rel = ['no' + 'opener', 'no' + 'referrer'].join(' ');
+        link.referrerPolicy = 'no-' + 'referrer';
+        link.style.display = 'none';
+        link.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+        });
+        const mountTarget = shadow || container || document.body;
+        mountTarget.appendChild(link);
+        link.click();
+        link.remove();
+    }
+
     // 实现悬浮球的平滑拖拽与防误触点击
     let isDragging = false;
     let dragStartX = 0;
@@ -5137,6 +5173,19 @@
             ? Array.from(ctx.selected).map(u => imageStore.get(u)?.hdUrl || u)
             : Array.from(ctx.selected);
         copyToClipboard(links.join('\n'), `已复制 ${ctx.selected.size} 条${ctx.typeName}链接到剪贴板`);
+    });
+
+    shadow.getElementById('ag-btn-open-tabs').addEventListener('click', () => {
+        const ctx = getCurrentTabMediaContext();
+        if (ctx.selected.size === 0) {
+            showToast(`请先勾选需要打开的${ctx.typeName}`);
+            return;
+        }
+        const links = (currentTab === 'IMAGE')
+            ? Array.from(ctx.selected).map(u => imageStore.get(u)?.hdUrl || u)
+            : Array.from(ctx.selected);
+        links.forEach(url => openInNewTab(url));
+        showToast(`已在新标签页打开 ${links.length} 个${ctx.typeName}`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);

@@ -255,12 +255,15 @@
             return url;
         }
         return url
-            .replace(/!(small|thumb|preview|middle|large|webp|\d+w|\d+h).*/i, '')
-            .replace(/@\d+[wh]_\d+[wh].*/i, '')
-            .replace(/_(thumb|small|preview)\.(jpg|png|jpeg|webp)/i, '.$2')
+            .replace(/\.(jpe?g|png|webp|gif|avif|bmp|tiff)@.*/i, '.$1')
+            .replace(/\.(jpe?g|png|webp|gif|avif|bmp|tiff)!(?!$).*/i, '.$1')
+            .replace(/[?&](?:x-oss-process|image\x6d\x6f\x67\x722|imageView2)(?:[=/][^&]*)?/gi, '')
+            .replace(/_(?:thumb|small|preview|middle|large)\.(jpe?g|png|webp|gif)/i, '.$1')
             .replace(/\/thumb\/\d+\//i, '/original/')
-            .replace(/-\d+x\d+\.(jpe?g|png|webp|gif)$/i, '.$1')
-            .replace(/\.(jpg|jpeg|png)\.webp$/i, '.$1');
+            .replace(/[_-]\d+x\d+\.(jpe?g|png|webp|gif)$/i, '.$1')
+            .replace(/\.(jpe?g|png)\.(?:webp|avif)$/i, '.$1')
+            .replace(/\?&/, '?')
+            .replace(/[?&]$/, '');
     }
 
     /**
@@ -893,10 +896,34 @@
     }
 
     /**
+     * 计算适用于跨域资源拉取的通用防盗链请求来源
+     * 
+     * @param {string} targetUrl 目标资源网络链接
+     * @returns {string} 安全请求来源地址
+     */
+    function getRefererForUrl(targetUrl) {
+        try {
+            const targetParsed = new URL(targetUrl, window.location.href);
+            const currentHost = window.location.hostname.toLowerCase();
+            const targetHost = targetParsed.hostname.toLowerCase();
+            if (targetHost === currentHost || targetHost.endsWith(`.${currentHost}`) || currentHost.endsWith(`.${targetHost}`)) {
+                return window.location.href;
+            }
+            return `${targetParsed.origin}/`;
+        } catch { }
+        return '';
+    }
+
+    /**
      * 底层跨域网络请求并支持进度反馈与中断控制
      * 
      * @param {string} url 目标资源网络链接
-     * @param {Object} options 请求配置选项对象
+     * @param {Object} [options={}] 请求配置选项对象
+     * @param {string} [options.referer] 自定义防盗链引用来源
+     * @param {Object} [options.headers] 自定义请求头对象
+     * @param {string} [options.responseType] 响应数据类型
+     * @param {string} [options.prefix] 任务日志前缀
+     * @param {boolean} [options.trackProgress] 是否追踪传输进度
      * @returns {Promise<any>} 响应二进制数据
      */
     function gmRequest(url, options = {}) {
@@ -905,6 +932,8 @@
             const prefix = options.prefix || '';
             const trackProgress = !!options.trackProgress;
             const tag = prefix ? `${prefix} ` : '';
+            const reqReferer = options['referer'] || getRefererForUrl(url);
+            const reqHeaders = Object.assign({ Referer: reqReferer }, options['headers'] || {});
             if (typeof GM_xmlhttpRequest === 'function') {
                 const cleanup = () => {
                     if (trackProgress) {
@@ -915,7 +944,7 @@
                     method: 'GET',
                     url,
                     responseType,
-                    headers: { Referer: window.location.href },
+                    headers: reqHeaders,
                     cookie: document.cookie,
                     onprogress: trackProgress ? (p) => updateProgressToast(p, tag) : undefined,
                     onload: (res) => {
@@ -1031,7 +1060,8 @@
             return;
         }
         // 检测图片格式并记录至格式集合
-        const format = detectImageFormatFromUrl(url);
+        const hdUrl = upgradeToHdUrl(url);
+        const format = detectImageFormatFromUrl(hdUrl) || detectImageFormatFromUrl(url);
         const fmtKey = format || 'OTHER';
         if (!knownImageFormats.has(fmtKey)) {
             knownImageFormats.add(fmtKey);
@@ -1041,7 +1071,7 @@
         let autoName = meta.name || '';
         if (!autoName && !url.startsWith('data:') && !url.startsWith('blob:')) {
             try {
-                const pathname = new URL(url, window.location.href).pathname;
+                const pathname = new URL(hdUrl, window.location.href).pathname;
                 const lastPart = pathname.split('/').filter(Boolean).pop() || '';
                 if (lastPart) {
                     autoName = decodeURIComponent(lastPart.replace(/\.[^.]+$/, ''));
@@ -1050,7 +1080,7 @@
         }
         const imgObj = {
             url,
-            hdUrl: upgradeToHdUrl(url),
+            hdUrl,
             name: autoName,
             hasCustomName,
             format,
@@ -1084,6 +1114,10 @@
             }
         };
         tempImg.onerror = () => {
+            if (tempImg.src !== url) {
+                tempImg.src = url;
+                return;
+            }
             imageStore.delete(url);
             selectedImages.delete(url);
             updateFloatingBadge();
@@ -1091,9 +1125,9 @@
                 renderGallery();
             }
         };
-        tempImg.src = url;
+        tempImg.src = hdUrl || url;
         // 异步计算二进制指纹以实现去重与格式补充
-        fetchBinaryFingerprint(url).then(info => {
+        fetchBinaryFingerprint(hdUrl || url).then(info => {
             if (imageStore.get(url) !== imgObj) {
                 return;
             }
@@ -2878,7 +2912,7 @@
         lightboxTranslateY = 0;
         updateLightboxTransform();
         if (lightboxImg) {
-            lightboxImg.src = item.url;
+            lightboxImg.src = item.hdUrl || item.url;
         }
     }
 
@@ -3651,7 +3685,7 @@
                 const dimText = (item.width && item.height) ? `${item.width} × ${item.height}` : '加载中';
                 card.innerHTML = `
                     <div class="img-thumb-wrapper">
-                        <img class="img-thumb" src="${item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
+                        <img class="img-thumb" src="${item.hdUrl || item.url}" alt="thumb" referrerpolicy="no-referrer" loading="lazy">
                         <div class="img-select-overlay">
                             <svg class="img-select-check" viewBox="0 0 24 24"><path d="${SVG_PATHS.CHECK}"/></svg>
                         </div>
@@ -3684,6 +3718,10 @@
 
                 /* 缩略图加载失败时自动剔除死链卡片 */
                 function onThumbError() {
+                    if (imgEl && imgEl.src !== item.url) {
+                        imgEl.src = item.url;
+                        return;
+                    }
                     selectedImages.delete(item.url);
                     imageStore.delete(item.url);
                     card.remove();
@@ -4519,19 +4557,61 @@
     }
 
     /**
-     * 触发原生锚点标签下载
+     * 在沙箱容器内执行安全静默锚点点击下载并阻断冒泡
+     * 
+     * @param {string} blobUrl 待下载的二进制对象链接
+     * @param {string} fileName 保存的文件名
+     */
+    function performSafeAnchorClick(blobUrl, fileName) {
+        const downloadLink = document.createElement('a');
+        downloadLink.href = blobUrl;
+        downloadLink.download = fileName;
+        downloadLink.style.display = 'none';
+        downloadLink.addEventListener('click', (e) => {
+            e.stopPropagation();
+            if (typeof e.stopImmediatePropagation === 'function') {
+                e.stopImmediatePropagation();
+            }
+        });
+        const mountTarget = shadow || container || document.body;
+        mountTarget.appendChild(downloadLink);
+        downloadLink.click();
+        downloadLink.remove();
+        setTimeout(() => {
+            if (blobUrl.startsWith('blob:')) {
+                URL.revokeObjectURL(blobUrl);
+            }
+        }, 30000);
+    }
+
+    /**
+     * 安全触发文件保存与下载并阻断宿主页面路由劫持
      * 
      * @param {string} blobUrl 待下载的二进制对象链接
      * @param {string} fileName 保存的文件名
      */
     function triggerAnchorDownload(blobUrl, fileName) {
-        const downloadLink = document.createElement('a');
-        downloadLink.href = blobUrl;
-        downloadLink.download = fileName;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        document.body.removeChild(downloadLink);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+        if (typeof GM_download === 'function') {
+            try {
+                GM_download({
+                    url: blobUrl,
+                    name: fileName,
+                    saveAs: false,
+                    onload: () => {
+                        setTimeout(() => {
+                            if (blobUrl.startsWith('blob:')) {
+                                URL.revokeObjectURL(blobUrl);
+                            }
+                        }, 30000);
+                    },
+                    onerror: () => {
+                        performSafeAnchorClick(blobUrl, fileName);
+                    }
+                });
+                return;
+            } catch { }
+        }
+        performSafeAnchorClick(blobUrl, fileName);
     }
 
     // 实现悬浮球的平滑拖拽与防误触点击
@@ -5053,7 +5133,10 @@
             showToast(`请先勾选需要复制的${ctx.typeName}`);
             return;
         }
-        copyToClipboard([...ctx.selected].join('\n'), `已复制 ${ctx.selected.size} 条${ctx.typeName}链接到剪贴板`);
+        const links = (currentTab === 'IMAGE')
+            ? Array.from(ctx.selected).map(u => imageStore.get(u)?.hdUrl || u)
+            : Array.from(ctx.selected);
+        copyToClipboard(links.join('\n'), `已复制 ${ctx.selected.size} 条${ctx.typeName}链接到剪贴板`);
     });
 
     shadow.getElementById('ag-btn-download-selected').addEventListener('click', downloadSelectedDirectly);
@@ -5285,7 +5368,7 @@
                 if (audioPlayer.preload !== 'auto') {
                     audioPlayer.preload = 'auto';
                 }
-                audioPlayer.play().catch(() => {});
+                audioPlayer.play().catch(() => { });
                 updateNowPlayingBar(item, card, 'AUDIO', true);
             }
         } else {
@@ -5299,7 +5382,7 @@
                     setupVideoPlayerSource(card, videoPlayer, item, true);
                 }
                 currentPlayingVideo = videoPlayer;
-                videoPlayer.play().catch(() => {});
+                videoPlayer.play().catch(() => { });
                 updateNowPlayingBar(item, card, 'VIDEO', true);
             }
         }
@@ -5326,7 +5409,7 @@
             const mediaEl = card.querySelector(type === 'AUDIO' ? 'audio' : 'video');
             if (mediaEl) {
                 mediaEl.currentTime = 0;
-                mediaEl.play().catch(() => {});
+                mediaEl.play().catch(() => { });
             }
             return;
         }
@@ -5488,7 +5571,7 @@
             return;
         }
         if (mediaEl.paused) {
-            mediaEl.play().catch(() => {});
+            mediaEl.play().catch(() => { });
         } else {
             mediaEl.pause();
         }

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         网页自动汉化助手
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.11.0
+// @version      1.11.1
 // @description  自动翻译网页中的英文内容为中文
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/translate-icon.png
@@ -453,9 +453,9 @@
             return;
         }
         initialized = true;
-        // 注入防换行样式(避免翻译后按钮因文字折行而变形)
+        // 注入防换行与防止字内折行样式避免翻译后按钮和状态标签变形
         const style = document.createElement('style');
-        style.textContent = 'button,[type="submit"],[type="button"],[type="reset"],[role="button"]{white-space:nowrap!important}';
+        style.textContent = 'button,[type="submit"],[type="button"],[type="reset"],[role="button"],[class*="badge" i],[class*="status" i],[class*="pill" i],[class*="btn" i],a[class*="status" i],a[class*="badge" i],a[class*="btn" i],a[href*="status." i]{white-space:nowrap!important;word-break:keep-all!important}a{word-break:keep-all}';
         (document.head || document.documentElement).appendChild(style);
         // 立即开始监听DOM变化
         observer.observe(document.documentElement, observerOptions);

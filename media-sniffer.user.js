@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.6
+// @version      1.6.7
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
@@ -308,6 +308,17 @@
     }
 
     /**
+     * 从链接中检测音频格式
+     * 
+     * @param {string} url 链接地址
+     * @returns {string} 音频格式名称
+     */
+    function detectAudioFormatFromUrl(url) {
+        const m = url.match(/(?:\.|\b(?:format|ext)=)(mp3|m4a|aac|flac|wav|ogg|opus)(?=[?#&]|$)/i);
+        return m ? m[1].toUpperCase() : '';
+    }
+
+    /**
      * 注册音频
      * 
      * @param {string} rawUrl 音频地址
@@ -324,15 +335,24 @@
             cleanUrl = decodeURIComponent(cleanUrl);
         } catch { }
         if (cleanAudioUrls.has(cleanUrl)) {
+            const exist = audioStore.get(url);
+            if (exist && meta.name && (!exist.hasCustomName || !exist.name)) {
+                exist.name = meta.name;
+                exist.hasCustomName = true;
+            }
+            if (exist && meta.format && !exist.format) {
+                exist.format = meta.format;
+            }
             return;
         }
         cleanAudioUrls.add(cleanUrl);
-        const format = meta.format || '';
+        const format = meta.format || detectAudioFormatFromUrl(url) || '';
         const fmtKey = format || 'AUDIO';
         if (!knownAudioFormats.has(fmtKey)) {
             knownAudioFormats.add(fmtKey);
             checkedAudioFormats.add(fmtKey);
         }
+        let hasCustomName = Boolean(meta.name);
         const name = meta.name || `audio_${audioStore.size + 1}${format ? `.${format.toLowerCase()}` : ''}`;
         const author = meta.author || '';
         if (name && !name.startsWith('audio_') && !source.startsWith('ALIST')) {
@@ -346,6 +366,7 @@
         const audioObj = {
             url,
             name,
+            hasCustomName,
             author,
             format,
             source,
@@ -4290,6 +4311,38 @@
     }
 
     /**
+     * 根据文件名后缀推导规范媒体类型
+     * 
+     * @param {string} fileName 保存文件名
+     * @returns {string} 对应的媒体类型字符串
+     */
+    function getMediaMimeType(fileName) {
+        const ext = (fileName || '').split('.').pop().toLowerCase();
+        const mimeMap = {
+            m4a: 'audio/mp4',
+            mp3: 'audio/mpeg',
+            aac: 'audio/aac',
+            flac: 'audio/flac',
+            wav: 'audio/wav',
+            ogg: 'audio/ogg',
+            opus: 'audio/opus',
+            mp4: 'video/mp4',
+            webm: 'video/webm',
+            mkv: 'video/x-matroska',
+            mov: 'video/quicktime',
+            ts: 'video/mp2t',
+            jpg: 'image/jpeg',
+            jpeg: 'image/jpeg',
+            png: 'image/png',
+            webp: 'image/webp',
+            gif: 'image/gif',
+            svg: 'image/svg+xml',
+            avif: 'image/avif'
+        };
+        return mimeMap[ext] || 'application/octet-stream';
+    }
+
+    /**
      * 单个媒体文件原生下载
      * 
      * @param {string} url 目标文件网络链接
@@ -4330,14 +4383,16 @@
             }
         }
         try {
-            const blob = await gmRequest(url, {
-                responseType: 'blob',
+            const rawData = await gmRequest(url, {
+                responseType: 'arraybuffer',
                 prefix,
                 trackProgress: true
             });
             if (isDownloadCancelled) {
                 return false;
             }
+            const mimeType = getMediaMimeType(targetName);
+            const blob = new Blob([rawData], { type: mimeType });
             triggerAnchorDownload(URL.createObjectURL(blob), targetName);
             showToast(`${tag}下载完成`, 2000);
             return true;

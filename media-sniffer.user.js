@@ -1,13 +1,14 @@
 // ==UserScript==
 // @name         媒体嗅探器
 // @namespace    https://greasyfork.org/users/1203191
-// @version      1.6.7
+// @version      1.6.8
 // @description  嗅探媒体资源并下载
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer-icon.png
 // @match        *://*/*
 // @run-at       document-start
 // @require      https://cdn.jsdelivr.net/npm/hls.js@1.5.17/dist/hls.min.js
+// @require      https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js
 // @grant        GM_download
 // @grant        GM_xmlhttpRequest
 // @grant        GM_setClipboard
@@ -22,7 +23,7 @@
 // @downloadURL  https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/media-sniffer.user.js
 // ==/UserScript==
 
-/* global GM_download, GM_xmlhttpRequest, GM_setClipboard, GM_getValue, GM_setValue, GM_openInTab, Hls */
+/* global GM_download, GM_xmlhttpRequest, GM_setClipboard, GM_getValue, GM_setValue, GM_openInTab, Hls, mpegts */
 
 (function () {
     'use strict';
@@ -579,6 +580,75 @@
         };
         script.onerror = () => {
             console.error('[MediaSniffer] Failed to load Hls.js via script tag');
+            resolve(null);
+        };
+        (document.head || document.documentElement).appendChild(script);
+    }
+
+    let mpegtsLoadingPromise = null;
+
+    /**
+     * 动态获取或加载 mpegts 流媒体转封装引擎类
+     * 
+     * @returns {Promise<*>} 返回可用的 mpegts 构造对象或空
+     */
+    function getMpegtsClass() {
+        const existingMpegts = (typeof window !== 'undefined' && window['mpegts'])
+            ? window['mpegts']
+            : (typeof globalThis !== 'undefined' && globalThis['mpegts'] ? globalThis['mpegts'] : (typeof mpegts !== 'undefined' ? mpegts : null));
+        if (existingMpegts) {
+            return Promise.resolve(existingMpegts);
+        }
+        if (mpegtsLoadingPromise) {
+            return mpegtsLoadingPromise;
+        }
+        mpegtsLoadingPromise = new Promise((resolve) => {
+            if (typeof GM_xmlhttpRequest === 'function') {
+                GM_xmlhttpRequest({
+                    method: 'GET',
+                    url: 'https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js',
+                    onload: (res) => {
+                        try {
+                            const fn = new Function(`${res.responseText}\nreturn (typeof window !== 'undefined' && window['mpegts'] ? window['mpegts'] : (typeof globalThis !== 'undefined' && globalThis['mpegts'] ? globalThis['mpegts'] : null));`);
+                            const loaded = fn();
+                            if (loaded) {
+                                console.log('[MediaSniffer] mpegts.js dynamically loaded and initialized');
+                                resolve(loaded);
+                                return;
+                            }
+                        } catch (e) {
+                            console.warn('[MediaSniffer] Eval mpegts failed:', e);
+                        }
+                        injectMpegtsScriptTag(resolve);
+                    },
+                    onerror: () => {
+                        injectMpegtsScriptTag(resolve);
+                    }
+                });
+            } else {
+                injectMpegtsScriptTag(resolve);
+            }
+        });
+        return mpegtsLoadingPromise;
+    }
+
+    /**
+     * 注入 mpegts 脚本标签作为后备加载方案
+     * 
+     * @param {Function} resolve 期约兑现回调函数
+     */
+    function injectMpegtsScriptTag(resolve) {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.jsdelivr.net/npm/mpegts.js@1.7.3/dist/mpegts.min.js';
+        script.onload = () => {
+            const m = (typeof window !== 'undefined' && window['mpegts'])
+                ? window['mpegts']
+                : (typeof globalThis !== 'undefined' && globalThis['mpegts'] ? globalThis['mpegts'] : null);
+            console.log('[MediaSniffer] mpegts.js loaded via script tag');
+            resolve(m);
+        };
+        script.onerror = () => {
+            console.error('[MediaSniffer] Failed to load mpegts.js via script tag');
             resolve(null);
         };
         (document.head || document.documentElement).appendChild(script);
@@ -3674,7 +3744,7 @@
                 const url = card.dataset.url;
                 const item = videoStore.get(url);
                 if (entry.isIntersecting) {
-                    if (item && videoPlayer && !card['_hls']) {
+                    if (item && videoPlayer && !card['_hls'] && !card['_mpegts'] && !card['_hlsFailed']) {
                         setupVideoPlayerSource(card, videoPlayer, item, true);
                     }
                 } else {
@@ -3684,12 +3754,128 @@
                         } catch { }
                         card['_hls'] = null;
                     }
+                    if (card['_mpegts'] && videoPlayer && videoPlayer.paused && currentPlayingVideo !== videoPlayer) {
+                        try {
+                            card['_mpegts'].destroy();
+                        } catch { }
+                        card['_mpegts'] = null;
+                    }
                 }
             });
         }, {
             root: rootContainer,
             rootMargin: '250px 0px 250px 0px'
         });
+    }
+
+    /**
+     * 使用 mpegts 转封装引擎加载并播放 HEVC TS 流媒体切片
+     * 
+     * @param {HTMLElement} card 目标视频卡片元素
+     * @param {HTMLVideoElement} videoEl 视频播放器元素
+     * @param {Object} item 媒体数据对象
+     * @param {boolean} autoStart 是否立即启动加载
+     */
+    async function setupHevcPlayerWithMpegts(card, videoEl, item, autoStart = true) {
+        const Mpegts = await getMpegtsClass();
+        if (!Mpegts || !Mpegts.isSupported()) {
+            card['_hlsFailed'] = true;
+            return;
+        }
+        try {
+            let m3u8Text = '';
+            if (item.url.startsWith('http')) {
+                m3u8Text = await new Promise((resolve, reject) => {
+                    GM_xmlhttpRequest({
+                        method: 'GET',
+                        url: item.url,
+                        onload: (r) => {
+                            resolve(r.responseText || '');
+                        },
+                        onerror: reject
+                    });
+                });
+            }
+            if (!m3u8Text) {
+                card['_hlsFailed'] = true;
+                return;
+            }
+            const lines = m3u8Text.split('\n').map((l) => l.trim()).filter(Boolean);
+            const segments = [];
+            let currentDuration = 5000;
+            const baseUrl = item.url.substring(0, item.url.lastIndexOf('/') + 1);
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                if (line.startsWith('#EXTINF:')) {
+                    const dur = parseFloat(line.replace('#EXTINF:', '').split(',')[0]);
+                    if (!isNaN(dur)) {
+                        currentDuration = Math.round(dur * 1000);
+                    }
+                } else if (!line.startsWith('#')) {
+                    let segUrl = line;
+                    if (!/^https?:\/\//i.test(segUrl)) {
+                        segUrl = baseUrl + segUrl;
+                    }
+                    segments.push({
+                        url: segUrl,
+                        duration: currentDuration
+                    });
+                }
+            }
+            if (segments.length === 0) {
+                card['_hlsFailed'] = true;
+                return;
+            }
+            const totalDurationMs = segments.reduce((sum, s) => sum + (s.duration || 0), 0);
+            const totalDurationSec = totalDurationMs / 1000;
+            if (card['_mpegts']) {
+                try {
+                    card['_mpegts'].destroy();
+                } catch { }
+                card['_mpegts'] = null;
+            }
+            const player = Mpegts.createPlayer({
+                type: 'mpegts',
+                isLive: false,
+                duration: totalDurationMs,
+                segments: segments
+            }, {
+                isLive: false,
+                enableWorker: false,
+                lazyLoad: false,
+                autoCleanupSourceBuffer: false
+            });
+            card['_mpegts'] = player;
+            player.attachMediaElement(videoEl);
+            const syncDuration = () => {
+                if (totalDurationSec > 0 && player._msectl && player._msectl._mediaSource && player._msectl._mediaSource.readyState === 'open') {
+                    try {
+                        if (Math.abs(player._msectl._mediaSource.duration - totalDurationSec) > 0.5 || isNaN(player._msectl._mediaSource.duration)) {
+                            player._msectl._mediaSource.duration = totalDurationSec;
+                        }
+                    } catch { }
+                }
+            };
+            videoEl.addEventListener('loadedmetadata', syncDuration);
+            videoEl.addEventListener('durationchange', syncDuration);
+            videoEl.addEventListener('play', syncDuration);
+            videoEl.addEventListener('timeupdate', syncDuration);
+            if (autoStart) {
+                player.load();
+            }
+            player.on(Mpegts.Events.ERROR, (errType, errDetail) => {
+                console.error('[MediaSniffer] mpegts player error:', errType, errDetail);
+                card['_hlsFailed'] = true;
+                try {
+                    player.destroy();
+                } catch { }
+                card['_mpegts'] = null;
+            });
+            console.log('[MediaSniffer] Successfully mounted mpegts HEVC player, total segments:', segments.length, 'duration:', totalDurationSec);
+        } catch (e) {
+            console.error('[MediaSniffer] Failed to setup mpegts HEVC player:', e);
+            card['_hlsFailed'] = true;
+        }
     }
 
     /**
@@ -3710,6 +3896,12 @@
                             card['_hls']['destroy']();
                         } catch { }
                     }
+                    if (card['_mpegts']) {
+                        try {
+                            card['_mpegts'].destroy();
+                        } catch { }
+                        card['_mpegts'] = null;
+                    }
                     const hlsInstance = new HlsClass({
                         loader: GMHlsLoader,
                         fLoader: GMHlsLoader,
@@ -3723,17 +3915,31 @@
                     hlsInstance.on(HlsClass.Events.MANIFEST_PARSED, (evt, data) => {
                         console.log('[MediaSniffer] Manifest parsed successfully, levels:', data?.levels?.length);
                     });
+                    let mediaRecoverCount = 0;
                     hlsInstance.on(HlsClass.Events.ERROR, (evt, data) => {
                         if (data.fatal) {
                             console.error('[MediaSniffer] Fatal HLS error:', data.type, data.details, data);
                             if (data.type === HlsClass.ErrorTypes.MEDIA_ERROR) {
-                                console.log('[MediaSniffer] Recovering media error');
-                                hlsInstance.recoverMediaError();
+                                if (data.details === 'fragParsingError' || mediaRecoverCount >= 2) {
+                                    try {
+                                        hlsInstance.destroy();
+                                    } catch { }
+                                    card['_hls'] = null;
+                                    void setupHevcPlayerWithMpegts(card, videoEl, item, autoStart).catch(() => { });
+                                } else {
+                                    mediaRecoverCount++;
+                                    console.log('[MediaSniffer] Recovering media error');
+                                    hlsInstance.recoverMediaError();
+                                }
                             } else if (data.type === HlsClass.ErrorTypes.NETWORK_ERROR) {
                                 console.log('[MediaSniffer] Recovering network error');
                                 hlsInstance.startLoad();
                             } else {
-                                showToast(`流媒体加载失败：${data.details}`);
+                                try {
+                                    hlsInstance.destroy();
+                                } catch { }
+                                card['_hls'] = null;
+                                void setupHevcPlayerWithMpegts(card, videoEl, item, autoStart).catch(() => { });
                             }
                         }
                     });
@@ -4060,7 +4266,7 @@
                     if (videoPlayer) {
                         const handleActiveInteraction = () => {
                             notifyUserPlayback();
-                            if (!card['_hls']) {
+                            if (!card['_hls'] && !card['_mpegts'] && !card['_hlsFailed']) {
                                 setupVideoPlayerSource(card, videoPlayer, item, true);
                             }
                         };
@@ -5007,6 +5213,12 @@
                     } catch { }
                     card['_hls'] = null;
                 }
+                if (card['_mpegts']) {
+                    try {
+                        card['_mpegts'].destroy();
+                    } catch { }
+                    card['_mpegts'] = null;
+                }
             });
             videoGallery.innerHTML = '';
         }
@@ -5573,7 +5785,7 @@
                 if (currentPlayingVideo && currentPlayingVideo !== videoPlayer) {
                     currentPlayingVideo.pause();
                 }
-                if (!card['_hls']) {
+                if (!card['_hls'] && !card['_mpegts'] && !card['_hlsFailed']) {
                     setupVideoPlayerSource(card, videoPlayer, item, true);
                 }
                 currentPlayingVideo = videoPlayer;

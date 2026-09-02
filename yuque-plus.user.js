@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         语雀文档助手
 // @namespace    https://greasyfork.org/users/1203191
-// @version      0.1.0
+// @version      0.1.1
 // @description  语雀文档体验增强
 // @author       tianxing-ovo
 // @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/yuque-plus-icon.png
@@ -16,7 +16,7 @@
 (function () {
     'use strict';
 
-    let previousUrl = location.href;
+    let previousPath = location.pathname;
     let hasFolded = false;
 
     /* 折叠大纲 */
@@ -36,8 +36,8 @@
     /* 监听页面变动与单页应用路由跳转 */
     function startObserver() {
         const observer = new MutationObserver(() => {
-            if (location.href !== previousUrl) {
-                previousUrl = location.href;
+            if (location.pathname !== previousPath) {
+                previousPath = location.pathname;
                 hasFolded = false;
             }
             if (!hasFolded) {

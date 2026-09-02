@@ -57,11 +57,11 @@
 
 克隆仓库后在 Tampermonkey 扩展设置中开启文件访问权限然后新建脚本将对应 Dev 加载器的内容粘贴保存即可实现修改源文件后刷新浏览器立即生效
 
-|        加载器文件        |       对应正式脚本       |
-| :----------------------: | :-----------------------: |
+|       加载器文件       |      对应正式脚本       |
+|:----------------------:|:-----------------------:|
 | `media-sniffer.dev.js` | `media-sniffer.user.js` |
 |   `translate.dev.js`   |   `translate.user.js`   |
-|  `yuque-plus.dev.js`  |  `yuque-plus.user.js`  |
+|  `yuque-plus.dev.js`   |  `yuque-plus.user.js`   |
 
 ## 贡献
 

@@ -4,7 +4,7 @@
 // @version      dev
 // @description  本地开发加载器
 // @author       tianxing-ovo
-// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/yuque-plus-icon.png
+// @icon         https://fastly.jsdelivr.net/gh/tianxing-ovo/Tampermonkey@master/yuque-plus-icon.png
 // @match        *://*.yuque.com/*
 // @run-at       document-idle
 // @grant        none

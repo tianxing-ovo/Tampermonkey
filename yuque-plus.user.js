@@ -4,7 +4,7 @@
 // @version      0.1.1
 // @description  语雀文档体验增强
 // @author       tianxing-ovo
-// @icon         https://raw.githubusercontent.com/tianxing-ovo/Tampermonkey/master/yuque-plus-icon.png
+// @icon         https://fastly.jsdelivr.net/gh/tianxing-ovo/Tampermonkey@master/yuque-plus-icon.png
 // @match        *://*.yuque.com/*
 // @run-at       document-idle
 // @grant        none

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         语雀文档助手
 // @namespace    https://greasyfork.org/users/1203191
-// @version      0.1.1
+// @version      0.1.2
 // @description  语雀文档体验增强
 // @author       tianxing-ovo
 // @icon         https://fastly.jsdelivr.net/gh/tianxing-ovo/Tampermonkey@master/yuque-plus-icon.png
@@ -25,12 +25,23 @@
             return;
         }
         // 查找大纲的全部折叠按钮
-        const foldButton = document.querySelector('[data-name="toc-fold"], .ne-icon-toc-fold');
+        const foldButton = document.querySelector('[data-name="toc-fold"]');
         if (foldButton) {
             hasFolded = true;
             // 触发点击
             foldButton.click();
         }
+    }
+
+    /* 监听编辑与更新按钮点击 */
+    function listenModeButtons() {
+        document.addEventListener('click', (event) => {
+            const button = event.target.closest('button');
+            const text = button?.textContent?.trim();
+            if (text === '编辑' || text === '更新') {
+                hasFolded = false;
+            }
+        }, true);
     }
 
     /* 监听页面变动与单页应用路由跳转 */
@@ -52,4 +63,5 @@
 
     // 启动监听
     startObserver();
+    listenModeButtons();
 })();
